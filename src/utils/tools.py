@@ -212,6 +212,42 @@ def parse_args(
             del final_args.parallel
     return final_args
 
+def seperate_model_regular_personal(dummy_model, buffer_type: str):
+    regular_params_name = set()
+    personal_params_name = set()
+    drop_params_name = set()
+
+    regular_params = OrderedDict()
+    personal_params = OrderedDict()
+
+    if buffer_type not in ["global", "local", "drop"]:
+        raise ValueError("buffer_type must be 'global', 'local', or 'drop'")
+
+    all_param_names = set(name for name, _ in dummy_model.named_parameters())
+    all_buffer_names = set(name for name, _ in dummy_model.named_buffers())
+
+    # 根据 buffer_type 的不同进行参数划分
+    if buffer_type == "global":
+        regular_params_name.update(all_param_names)
+        regular_params_name.update(all_buffer_names)
+    elif buffer_type == "local":
+        regular_params_name.update(all_param_names)
+        personal_params_name.update(all_buffer_names)
+    elif buffer_type == "drop":
+        regular_params_name.update(all_param_names)
+        drop_params_name.update(all_buffer_names)
+
+    model_state = dummy_model.state_dict()
+
+    for key, param in model_state.items():
+        if key in regular_params_name:
+            regular_params[key] = param.clone().cpu()
+        elif key in personal_params_name:
+            personal_params[key] = param.clone().cpu()
+
+    return regular_params_name,regular_params, personal_params_name,personal_params
+
+
 
 class Logger:
     def __init__(

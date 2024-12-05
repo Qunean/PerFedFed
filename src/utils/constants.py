@@ -59,6 +59,7 @@ DEFAULTS = {
         "num_workers": 2,
     },
     "common": {
+        "wandb": False,
         "seed": 42,
         "join_ratio": 0.1,
         "global_epoch": 100,

@@ -1,0 +1,91 @@
+method: perfedfed
+
+dataset:
+  name: cifar10
+
+model:
+  name: lenet5
+  use_torchvision_pretrained_weights: false
+  external_model_weights_path: null
+
+lr_scheduler:
+  name: step # [null, step, cosine, constant, plateau]
+  step_size: 10 # step
+  gamma: 0.1 # [step, plateau]
+  T_max: 10 # cosine
+  eta_min: 0 # cosine
+  factor: 0.3334 # [constant, plateau]
+  total_iters: 5 # constant
+  mode: min # plataeu
+  patience: 10 # plateau
+  threshold: 1.0e-4 # plateau
+  threshold_mode: rel # plateau
+  cooldown: 0 # plateau
+  min_lr: 0 # plateau
+  eps: 1.0e-8 # plateau
+  last_epoch: -1
+
+
+optimizer:
+  name: sgd # [sgd, adam, adamw, rmsprop, adagrad]
+  lr: 0.01
+  dampening: 0 # for SGD
+  weight_decay: 0
+  momentum: 0 # for [SGD, RMSprop]
+  alpha: 0.99 # for RMSprop
+  nesterov: false # for SGD
+  betas: [0.9, 0.999] # for [Adam, AdamW]
+  amsgrad: false # for [Adam, AdamW]
+
+mode: serial # [serial, parallel]
+
+parallel:
+  ray_cluster_addr: null # [null, auto, local]
+  num_cpus: null
+  num_gpus: null
+  num_workers: 2
+
+common:
+  wandb: False
+  seed: 42 # Random seed of the run.
+  join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
+  global_epoch: 100 # Number of global epochs, also called communication round.
+  local_epoch: 5 # Number if epochs of client local training.
+  finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
+  batch_size: 32 # Data batch size for client local training.
+  test_interval: 10 # Interval round of performing test on all test clients.
+  straggler_ratio: 0
+  straggler_min_local_epoch: 0
+
+  buffers: local # [local, global, drop]
+
+
+  eval_test: true
+  eval_val: true
+  eval_train: true
+
+  verbose_gap: 1 # Interval round of displaying clients training performance on terminal.
+  monitor: null # [null, visdom, tensorboard]
+  use_cuda: true # Whether to use cuda for training.
+
+  save_log: true # Whether to save log files in out/<method>/<start_time>.
+  save_model: false # Whether to save model weights (*.pt) in out/<method>/<start_time>.
+  save_fig: true # Whether to save learning curve firgure (*.png) in out/<method>/<start_time>.
+  save_metrics: true # Whether to save metrics (*.csv) in out/<method>/<start_time>.
+
+  delete_useless_run: true
+
+perfedfed:
+  #88.36%(20)
+  VAE_lr: 0.0001
+  VAE_weight_decay: 0.0001
+  VAE_alpha: 3.94
+  VAE_re: 5.18
+  VAE_kl: 2.62
+  VAE_ce: 3.23
+  VAE_x_ce: 5.61
+  consis: 4.14
+  robust_consis: 5.10
+  VAE_batch_size: 32
+  VAE_block_depth: 64
+  warmup_local_round: 2
