@@ -1,17 +1,14 @@
 import math
-import random
 from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
 from copy import deepcopy
 from functools import partial
 from typing import Any
-import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
-from rich.progress import track
 import wandb
-from sympy import false
+
 
 from src.client.perfedfed import PerFedFedClient
 from src.server.fedavg import FedAvgServer
@@ -96,41 +93,19 @@ class PerFedFedServer(FedAvgServer):
             i: deepcopy(dummy_VAE_optimizer.state_dict()) for i in self.train_clients
         }
 
-        # model 中的public 和 personal 部分
-        self.clients_regular_model_params = {i: {} for i in range(self.client_num)}
+        # model 中的regular部门
+        # self.clients_regular_model_params = {i: {} for i in range(self.client_num)}
 
-        # 清理虚拟模型
         del dummy_VAE_model, dummy_VAE_optimizer
-
-        # 调用自定义 warm-up 方法（如果定义了）
         self.warm_up()
 
     def warm_up(self):
-        """
-        Perform warm-up initialization for clients, setting up their parameters and optimizers.
-        """
         def _package_warm(client_id: int):
             """
             Create a package of parameters and states for the client during the warm-up phase.
             """
-            server_package = dict(
-                client_id=client_id,
-                local_epoch=self.client_local_epoches[client_id],
-                # Use client_local_epoches instead of undefined clients_local_epoch
-                return_diff=self.return_diff,
-            )
+            server_package = self.package(client_id)
             server_package["warm_up"] = True
-
-            # ----- VAE Parameters -----
-            server_package["VAE_regular_params"] = self.global_VAE_params
-            server_package["VAE_personal_params"] = self.client_VAE_personal_params.get(client_id)
-            server_package["VAE_optimizer_state"] = self.client_VAE_optimizer_states.get(client_id)
-            # ----- Model Parameters -----
-            server_package["regular_model_params"] = self.public_model_params
-            server_package["personal_model_params"] = self.clients_personal_model_params[client_id]
-            server_package["optimizer_state"] = deepcopy(self.client_optimizer_states[client_id])
-            server_package["lr_scheduler_state"] = deepcopy(self.client_lr_scheduler_states[client_id])
-
             return server_package
 
         # Distribute warm-up packages to clients
@@ -144,7 +119,6 @@ class PerFedFedServer(FedAvgServer):
             self.client_VAE_regular_params[client_id].update(package["VAE_regular_params"])
             self.client_VAE_optimizer_states[client_id].update(package["VAE_optimizer_state"])
             self.clients_personal_model_params[client_id].update(package["personal_model_params"])
-            self.clients_regular_model_params[client_id].update(package["regular_model_params"])
             self.client_optimizer_states[client_id].update(package["optimizer_state"])
             self.client_lr_scheduler_states[client_id].update(package["lr_scheduler_state"])
 
@@ -153,43 +127,43 @@ class PerFedFedServer(FedAvgServer):
     @torch.no_grad()
     def aggregate(self, clients_package: OrderedDict[int, dict[str, Any]]):
         # 根据label entropy 和 weights 综合聚合VAE
+        # -------------------------------1. entropy weights-------------------------------
+        entropy_weights = torch.tensor(
+            [package["label_entropy"] for package in clients_package.values()],
+            dtype=torch.float,
+        )
+        entropy_weights /= entropy_weights.sum()  # 归一化信息熵权重
+        entropy_weights = entropy_weights.squeeze()
+        # -------------------------------2. datasets weights-------------------------------
+        weights = torch.tensor(
+            [package["weight"] for package in clients_package.values()],
+            dtype=torch.float,
+        )
+        weights /= weights.sum()
+        # -------------------------------3. combine weights-----------------------------
+        # datasets_weights=1 则为fedavg聚合。
+        VAE_weights = (1 - self.args.perfedfed.datasets_weights) * entropy_weights + self.args.perfedfed.datasets_weights * weights
+        VAE_weights /= VAE_weights.sum()
+
         for client_id, package in clients_package.items():
-            self.client_VAE_personal_params[client_id] = package["VAE_personal_params"]
-            self.client_VAE_regular_params[client_id] = package["VAE_regular_params"]
-            self.client_VAE_optimizer_states[client_id] = package["VAE_optimizer_state"]
-            # -------------------------------1. entropy weights-------------------------------
-            entropy_weights = torch.tensor(
-                [package["label_entropy"] for package in clients_package.values()],
-                dtype=torch.float,
+            self.client_VAE_personal_params[client_id].update(package["VAE_personal_params"])
+            self.client_VAE_regular_params[client_id].update(package["VAE_regular_params"])
+            self.client_VAE_optimizer_states[client_id].update(package["VAE_optimizer_state"])
+            # self.clients_regular_model_params[client_id].update(package["regular_model_params"])
+            # -------------------------------4. aggregate  VAE weights-----------------------------
+        for key, global_param in self.global_VAE_params.items():
+            client_VAE_params = torch.stack(
+                [
+                    package["VAE_regular_params"][key]
+                    for package in clients_package.values()
+                ],
+                dim=-1,
             )
-            entropy_weights /= entropy_weights.sum()  # 归一化信息熵权重
-            entropy_weights = entropy_weights.squeeze()
-            # -------------------------------2. datasets weights-------------------------------
-            weights = torch.tensor(
-                [package["weight"] for package in clients_package.values()],
-                dtype=torch.float,
-            )
-            weights /= weights.sum()
-
-            # -------------------------------3. combine weights-----------------------------
-            # datasets_weights=1 则为fedavg聚合。
-            VAE_weights = (1-self.args.perfedfed.datasets_weights) * entropy_weights + self.args.perfedfed.datasets_weights * weights
-            VAE_weights /= VAE_weights.sum()
-
-            # -------------------------------4. aggregate weights-----------------------------
-            for key, global_param in self.global_VAE_params.items():
-                client_VAE_params = torch.stack(
-                    [
-                        package["VAE_regular_params"][key]
-                        for package in clients_package.values()
-                    ],
-                    dim=-1,
-                )
-                global_param.data = torch.sum(
-                    client_VAE_params * VAE_weights,
-                    dim=-1,
-                    dtype=global_param.dtype,
-                ).to(global_param.device)
+            global_param.data = torch.sum(
+                client_VAE_params * VAE_weights,
+                dim=-1,
+                dtype=global_param.dtype,
+            ).to(global_param.device)
 
         # 根据weights 聚合model.base
         if self.return_diff:  # inputs are model params diff
@@ -231,6 +205,7 @@ class PerFedFedServer(FedAvgServer):
         server_package["VAE_optimizer_state"] = (
             self.client_VAE_optimizer_states.get(client_id)
         )
+        server_package["current_epoch"] = self.current_epoch
         return server_package
 
     def log_info(self):
@@ -255,13 +230,13 @@ class PerFedFedServer(FedAvgServer):
 
                         metrics_to_log = {
                             f"{split}_accuracy_{stage}": global_metrics.accuracy,
-                            f"{split}_corrects_{stage}": global_metrics.corrects,
-                            f"{split}_loss_{stage}": global_metrics.loss,
-                            f"{split}_macro_precision_{stage}": global_metrics.macro_precision,
-                            f"{split}_macro_recall_{stage}": global_metrics.macro_recall,
-                            f"{split}_micro_precision_{stage}": global_metrics.micro_precision,
-                            f"{split}_micro_recall_{stage}": global_metrics.micro_recall,
-                            f"{split}_size_{stage}": global_metrics.size,
+                            # f"{split}_corrects_{stage}": global_metrics.corrects,
+                            # f"{split}_loss_{stage}": global_metrics.loss,
+                            # f"{split}_macro_precision_{stage}": global_metrics.macro_precision,
+                            # f"{split}_macro_recall_{stage}": global_metrics.macro_recall,
+                            # f"{split}_micro_precision_{stage}": global_metrics.micro_precision,
+                            # f"{split}_micro_recall_{stage}": global_metrics.micro_recall,
+                            # f"{split}_size_{stage}": global_metrics.size,
                             "epoch": self.current_epoch,  # 添加 epoch
                         }
 

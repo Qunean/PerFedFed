@@ -18,6 +18,9 @@ class PerFedFedClient(FedAvgClient):
         self.VAE_optimizer: torch.optim.Optimizer = VAE_optimizer_cls(
             params=self.VAE.parameters()
         )
+        self.personal_params_name.extend(
+            [name for name in self.model.state_dict().keys() if "classifier" in name]
+        )
         self.VAE_regular_params_name = VAE_regular_params_name
         self.VAE_personal_params_name = VAE_personal_params_name
 
@@ -95,7 +98,7 @@ class PerFedFedClient(FedAvgClient):
         self.warm = package.get("warm_up", False)
         self.sample = package.get("sample_VAE", False)
         if self.warm:
-            self.VAE.load_state_dict(package["VAE_regular_params"], strict=False)
+            self.VAE.load_state_dict(package["VAE_global_params"], strict=False) #package["VAE_global_params"] 和 package["VAE_regular_params"]在warm up阶段没差
             self.VAE.load_state_dict(package["VAE_personal_params"], strict=False)
             self.VAE_optimizer.load_state_dict(package["VAE_optimizer_state"])
             super().set_parameters(package)
@@ -103,8 +106,11 @@ class PerFedFedClient(FedAvgClient):
             self.VAE.load_state_dict(package["VAE_regular_params"], strict=False)
             self.VAE.load_state_dict(package["VAE_personal_params"], strict=False)
         else:
-            #1. VAE 加载的是聚合过后的
-            self.VAE.load_state_dict(package["VAE_global_params"], strict=False)
+            if package["current_epoch"]>=1:
+                #1. VAE 加载的是聚合过后的
+                self.VAE.load_state_dict(package["VAE_global_params"], strict=False)
+            else:
+                self.VAE.load_state_dict(package["VAE_regular_params"], strict=False)
             self.VAE.load_state_dict(package["VAE_personal_params"], strict=False)
             self.VAE_optimizer.load_state_dict(package["VAE_optimizer_state"])
             #2. dummy VAE加载的是上一轮的本地VAE
@@ -112,6 +118,7 @@ class PerFedFedClient(FedAvgClient):
             self.dummy_VAE.load_state_dict(package["VAE_personal_params"], strict=False)
             #3. model 是加载的自己的
             super().set_parameters(package)
+
 
     def label_entropy(self, client_labels):
         # 获取总的类别数目，假设 args.common.dataset 已正确设置了数据集名，且 NUM_CLASSES 是一个全局字典，存储各数据集的类别数
@@ -153,12 +160,13 @@ class PerFedFedClient(FedAvgClient):
 
         return client_package
 
-    def warm_up(self,package):
+    def warm_up(self, package):
         self.set_parameters(package)
         self.dataset.train()
+
+        # ---------------------------1. Train the classifier---------------------------
+        self.model.train()  # 设置分类模型为训练模式
         for _ in range(self.args.perfedfed.warmup_local_round):
-            # ---------------------------1. initial model--------------------------------
-            self.model.train()
             for x, y in self.trainloader:
                 if len(y) <= 1:
                     continue
@@ -168,15 +176,15 @@ class PerFedFedClient(FedAvgClient):
                 )
 
                 logits = self.model(x_mixed)
-                loss_classifier = lamda * F.cross_entropy(logits, y_ori) + (
-                        1 - lamda
-                ) * F.cross_entropy(logits, y_rand)
+                loss_classifier = lamda * F.cross_entropy(logits, y_ori) + (1 - lamda) * F.cross_entropy(logits, y_rand)
                 self.optimizer.zero_grad()
                 loss_classifier.backward()
                 self.optimizer.step()
-            # ---------------------------2. initial VAE--------------------------------
-            self.VAE.train()
-            self.model.eval()
+
+        # ---------------------------2. Train the VAE---------------------------
+        self.VAE.train()  # 设置 VAE 模型为训练模式
+        self.model.eval()  # 分类模型不更新
+        for _ in range(self.args.perfedfed.warmup_local_round):
             for x, y in self.trainloader:
                 if len(y) <= 1:
                     continue
@@ -185,7 +193,8 @@ class PerFedFedClient(FedAvgClient):
                 robust, mu, logvar = self.VAE(x)
                 construction_loss = F.mse_loss(robust, x)
                 kl_loss = (-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())) / (
-                        self.args.perfedfed.VAE_batch_size * 3 * self.VAE.feature_length)
+                        self.args.perfedfed.VAE_batch_size * 3 * self.VAE.feature_length
+                )
                 loss_VAE = (self.args.perfedfed.VAE_re * construction_loss) + (self.args.perfedfed.VAE_kl * kl_loss)
                 self.VAE_optimizer.zero_grad()
                 loss_VAE.backward()
@@ -276,3 +285,4 @@ def wandb_log_image(robust, x, client_id,save_path):
     local_save_path = f"{save_path}/client_{client_id}_image.png"
     pil_img.save(local_save_path)
     print(f"Image saved to {local_save_path}")
+

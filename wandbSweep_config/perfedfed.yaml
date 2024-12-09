@@ -14,11 +14,11 @@ parameters:
   common#wandb:
     values: [True]
   common#batch_size:
-    values: [32,64,128]
+    values: [32]
   common#finetune_epoch:
     values: [1,2,4]
   optimizer#lr:
-    values: [0.0001,0.0003,0.0009, 0.001,0.003,0.009, 0.01]
+    values: [0.0009, 0.001,0.003,0.009, 0.01]
   optimizer#momentum:
     values: [0.001,0.003,0.009,0.01]
   perfedfed#VAE_lr:

@@ -1,0 +1,33 @@
+method: bayes
+metric:
+  name: val_accuracy_after  # 要优化的目标指标名称
+  goal: maximize  # 优化目标为最大化
+parameters:
+  mode:
+    values: [serial]
+  parallel#num_cpus:
+    values: [48]
+  parallel#num_gpus:
+    values: [4]
+  common#test_interval:
+    values: [10]
+  common#wandb:
+    values: [True]
+  common#batch_size:
+    values: [32]
+  common#finetune_epoch:
+    values: [2]
+  optimizer#lr:
+    values: [0.0009, 0.001,0.003,0.009, 0.01]
+  optimizer#momentum:
+    values: [0.001,0.003,0.009,0.01]
+  fedgen#ensemble_lr:
+    values: [3e-4,3e-3,0.003,0.006,0.009]
+  fedgen#generative_alpha:
+    values: [1,4,8,10]
+  fedgen#generative_beta:
+    values: [1,4,8,10]
+  fedgen#ensemble_alpha:
+    values: [1,3,6,9]
+  fedgen#emsemble_eta:
+    values: [0,0.1,0.3,1]
