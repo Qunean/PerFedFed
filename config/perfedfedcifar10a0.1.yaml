@@ -49,7 +49,7 @@ common:
   wandb: False
   seed: 42 # Random seed of the run.
   join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
-  global_epoch: 100 # Number of global epochs, also called communication round.
+  global_epoch: 50 # Number of global epochs, also called communication round.
   local_epoch: 5 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.
@@ -89,3 +89,26 @@ perfedfed:
   VAE_batch_size: 32
   VAE_block_depth: 64
   warmup_local_round: 2
+fedgen:
+  #44.86%(36)
+  ensemble_lr: 0.0001
+  gen_batch_size: 32
+  generative_alpha: 7.25
+  generative_beta: 9.58
+  ensemble_alpha: 2.93
+  ensemble_beta: 3.60
+  ensemble_eta: 3.21
+  noise_dim: 32
+  hidden_dim: 32
+  use_embedding: 0
+  coef_decay: 0.09618
+  coef_decay_epoch: 2
+  ensemble_epoch: 50
+  train_generator_epoch: 1
+  min_samples_per_label: 1
+fedfomo:
+  #90.91%(25)
+    M: 5
+    valset_ratio: 0.1
+pfedsim:
+  warmup_round: 0.5

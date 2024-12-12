@@ -30,7 +30,7 @@ for method in "${methods[@]}"; do
         echo "Running method: $method with config: $config_name and weights: $weights" | tee -a "$log_file"
 
         # 运行每个方法，日志输出保存到文件
-        if python main.py --config-name "$config_name" --config-path "$config_path" method="$method" +perfedfed.datasets_weights="$weights" >> "$log_file" 2>&1; then
+        if python ../main.py --config-name "$config_name" --config-path "$config_path" method="$method" +perfedfed.datasets_weights="$weights" >> "$log_file" 2>&1; then
             echo "Method $method with weights $weights completed successfully." | tee -a "$log_file"
         else
             echo "Method $method with weights $weights failed." | tee -a "$log_file"
