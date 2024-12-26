@@ -65,6 +65,10 @@ pfedsim:
 moon:
   tau: 0.5
   mu: 5
+fedap:
+  pretrain_ratio: 0.2
+  warmup_round: 0.2
+  model_momentum: 0.1
 knnper:
   weight: 0.2
   k: 2
