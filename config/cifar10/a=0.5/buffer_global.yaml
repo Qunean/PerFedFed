@@ -83,3 +83,6 @@ fedfomo:
     valset_ratio: 0.1
 pfedsim:
   wr: 0.2
+knnper:
+  weight: 0.2
+  k: 2

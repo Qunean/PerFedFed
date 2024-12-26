@@ -65,3 +65,6 @@ pfedsim:
 moon:
   tau: 0.5
   mu: 5
+knnper:
+  weight: 0.2
+  k: 2
