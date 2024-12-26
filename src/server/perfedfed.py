@@ -209,6 +209,17 @@ class PerFedFedServer(FedAvgServer):
         return server_package
 
     def log_info(self):
+        """Accumulate client evaluation results at each round and record the best results."""
+        # 初始化最高 val_accuracy_before 和对应的 test_accuracy 变量
+        if not hasattr(self, "best_val_accuracy_before"):
+            self.best_val_accuracy_before = -1.0
+            self.best_test_accuracy_before = -1.0
+            self.best_test_accuracy_after = -1.0
+            self.all_test_accuracy_after = -1.0
+
+        use_wandb = self.args.common.wandb
+        monitor = self.args.common.monitor
+
         """Accumulate client evaluation results at each round."""
         for stage in ["before", "after"]:
             for split, flag in [
@@ -224,25 +235,11 @@ class PerFedFedServer(FedAvgServer):
                         )
 
                     self.global_metrics[stage][split].append(global_metrics)
-                    # Example WandB logging (uncomment to use WandB)
-                    if self.args.common.wandb == True:
+
+                    if use_wandb:
                         wandb.log({f"{split}_accuracy_{stage}": global_metrics.accuracy, "epoch": self.current_epoch})
 
-                        metrics_to_log = {
-                            f"{split}_accuracy_{stage}": global_metrics.accuracy,
-                            # f"{split}_corrects_{stage}": global_metrics.corrects,
-                            # f"{split}_loss_{stage}": global_metrics.loss,
-                            # f"{split}_macro_precision_{stage}": global_metrics.macro_precision,
-                            # f"{split}_macro_recall_{stage}": global_metrics.macro_recall,
-                            # f"{split}_micro_precision_{stage}": global_metrics.micro_precision,
-                            # f"{split}_micro_recall_{stage}": global_metrics.micro_recall,
-                            # f"{split}_size_{stage}": global_metrics.size,
-                            "epoch": self.current_epoch,  # 添加 epoch
-                        }
-
-                        wandb.log(metrics_to_log)
-
-                    if self.args.common.monitor == "visdom":
+                    if monitor == "visdom":
                         self.viz.line(
                             [global_metrics.accuracy],
                             [self.current_epoch],
@@ -256,13 +253,84 @@ class PerFedFedServer(FedAvgServer):
                                 legend=[self.algorithm_name],
                             ),
                         )
-                    elif self.args.common.monitor == "tensorboard":
+                    elif monitor == "tensorboard":
                         self.tensorboard.add_scalar(
                             f"Accuracy-{self.monitor_window_name_suffix}/{split}set-{stage}LocalTraining",
                             global_metrics.accuracy,
-                            self.current_epoch,
-                            new_style=True,
+                            self.current_epoch
                         )
+
+        # 更新最佳验证和测试准确率
+        if self.global_metrics["before"]["val"][-1].accuracy > self.best_val_accuracy_before:
+            self.best_val_accuracy_before = self.global_metrics["before"]["val"][-1].accuracy
+            self.best_test_accuracy_before = self.global_metrics["before"]["test"][-1].accuracy
+            self.best_test_accuracy_after = self.global_metrics["after"]["test"][-1].accuracy
+
+        if self.global_metrics["after"]["test"][-1].accuracy > self.all_test_accuracy_after:
+            self.all_test_accuracy_after = self.global_metrics["after"]["test"][-1].accuracy
+
+        if use_wandb:
+            wandb.log({
+                "best_test_accuracy_before": self.best_test_accuracy_before,
+                "best_test_accuracy_after": self.best_test_accuracy_after,
+                "all_test_accuracy_after": self.all_test_accuracy_after
+            })
+
+    # def log_info(self):
+    #     """Accumulate client evaluation results at each round."""
+    #     for stage in ["before", "after"]:
+    #         for split, flag in [
+    #             ("train", self.args.common.eval_train),
+    #             ("val", self.args.common.eval_val),
+    #             ("test", self.args.common.eval_test),
+    #         ]:
+    #             if flag:
+    #                 global_metrics = Metrics()
+    #                 for i in self.selected_clients:
+    #                     global_metrics.update(
+    #                         self.client_metrics[i][self.current_epoch][stage][split]
+    #                     )
+    #
+    #                 self.global_metrics[stage][split].append(global_metrics)
+    #                 # Example WandB logging (uncomment to use WandB)
+    #                 if self.args.common.wandb == True:
+    #                     wandb.log({f"{split}_accuracy_{stage}": global_metrics.accuracy, "epoch": self.current_epoch})
+    #
+    #                     metrics_to_log = {
+    #                         f"{split}_accuracy_{stage}": global_metrics.accuracy,
+    #                         # f"{split}_corrects_{stage}": global_metrics.corrects,
+    #                         # f"{split}_loss_{stage}": global_metrics.loss,
+    #                         # f"{split}_macro_precision_{stage}": global_metrics.macro_precision,
+    #                         # f"{split}_macro_recall_{stage}": global_metrics.macro_recall,
+    #                         # f"{split}_micro_precision_{stage}": global_metrics.micro_precision,
+    #                         # f"{split}_micro_recall_{stage}": global_metrics.micro_recall,
+    #                         # f"{split}_size_{stage}": global_metrics.size,
+    #                         "epoch": self.current_epoch,  # 添加 epoch
+    #                     }
+    #
+    #                     wandb.log(metrics_to_log)
+    #
+    #                 if self.args.common.monitor == "visdom":
+    #                     self.viz.line(
+    #                         [global_metrics.accuracy],
+    #                         [self.current_epoch],
+    #                         win=f"Accuracy-{self.monitor_window_name_suffix}/{split}set-{stage}LocalTraining",
+    #                         update="append",
+    #                         name=self.algorithm_name,
+    #                         opts=dict(
+    #                             title=f"Accuracy-{self.monitor_window_name_suffix}/{split}set-{stage}LocalTraining",
+    #                             xlabel="Communication Rounds",
+    #                             ylabel="Accuracy",
+    #                             legend=[self.algorithm_name],
+    #                         ),
+    #                     )
+    #                 elif self.args.common.monitor == "tensorboard":
+    #                     self.tensorboard.add_scalar(
+    #                         f"Accuracy-{self.monitor_window_name_suffix}/{split}set-{stage}LocalTraining",
+    #                         global_metrics.accuracy,
+    #                         self.current_epoch,
+    #                         new_style=True,
+    #                     )
 
 # Modified from the official codes
 class VAE(nn.Module):

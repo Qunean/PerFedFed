@@ -1,15 +1,12 @@
-method: perfedfed
-
+method: fedavg
 dataset:
   name: cifar10
-
 model:
   name: lenet5
   use_torchvision_pretrained_weights: false
   external_model_weights_path: null
-
 lr_scheduler:
-  name: step # [null, step, cosine, constant, plateau]
+  name: null # [null, step, cosine, constant, plateau]
   step_size: 10 # step
   gamma: 0.1 # [step, plateau]
   T_max: 10 # cosine
@@ -24,8 +21,7 @@ lr_scheduler:
   min_lr: 0 # plateau
   eps: 1.0e-8 # plateau
   last_epoch: -1
-
-
+# The optimizer that used for client local training.
 optimizer:
   name: sgd # [sgd, adam, adamw, rmsprop, adagrad]
   lr: 0.01
@@ -36,17 +32,13 @@ optimizer:
   nesterov: false # for SGD
   betas: [0.9, 0.999] # for [Adam, AdamW]
   amsgrad: false # for [Adam, AdamW]
-
 mode: serial # [serial, parallel]
-
 parallel:
   ray_cluster_addr: null # [null, auto, local]
   num_cpus: null
   num_gpus: null
   num_workers: 2
-
 common:
-  wandb: False
   seed: 42 # Random seed of the run.
   join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
   global_epoch: 50 # Number of global epochs, also called communication round.
@@ -56,55 +48,42 @@ common:
   test_interval: 1 # Interval round of performing test on all test clients.
   straggler_ratio: 0
   straggler_min_local_epoch: 0
-
-  buffers: local # [local, global, drop]
-
-
+  buffers: global # [local, global, drop]
   eval_test: true
   eval_val: true
   eval_train: true
-
-  verbose_gap: 1 # Interval round of displaying clients training performance on terminal.
+  verbose_gap: 10 # Interval round of displaying clients training performance on terminal.
   monitor: null # [null, visdom, tensorboard]
   use_cuda: true # Whether to use cuda for training.
-
   save_log: true # Whether to save log files in out/<method>/<start_time>.
   save_model: false # Whether to save model weights (*.pt) in out/<method>/<start_time>.
   save_fig: true # Whether to save learning curve firgure (*.png) in out/<method>/<start_time>.
   save_metrics: true # Whether to save metrics (*.csv) in out/<method>/<start_time>.
-
   delete_useless_run: true
-
-perfedfed:
-#12.25 71.22% 70.70% 73.25%
-  VAE_lr: 0.0001
-  VAE_weight_decay: 0.000001
-  VAE_alpha: 4.0108728695846665
-  VAE_re: 1.9536294824622944
-  VAE_kl: 0.015550410673999931
-  VAE_ce: 2.803723570538033
-  VAE_x_ce: 1.4134158431167705
-  consis: 3.636252913629917
-  robust_consis: 4.307295791176477
-  VAE_batch_size: 64
-  VAE_block_depth: 32
-  warmup_local_round: 3
-  datasets_weights: 0.8
-
-#12.24 70.64% 71.74% 72.46%
-#│   'perfedfed': {
-#│   │   'VAE_lr': 0.0001,
-#│   │   'VAE_weight_decay': 1e-06,
-#│   │   'VAE_alpha': 4.0108728695846665,
-#│   │   'VAE_re': 1.9536294824622944,
-#│   │   'VAE_kl': 0.015550410673999931,
-#│   │   'VAE_ce': 2.803723570538033,
-#│   │   'VAE_x_ce': 1.4134158431167705,
-#│   │   'consis': 3.636252913629917,
-#│   │   'robust_consis': 4.307295791176477,
-#│   │   'VAE_batch_size': 64,
-#│   │   'VAE_block_depth': 32,
-#│   │   'warmup_local_round': 3,
-#│   │   'datasets_weights': 0.7759176362135324,
-#│   │   'display_robust_feature': False
-#│   }
+fedgen:
+  #44.86%(36)
+  ensemble_lr: 0.0001
+  gen_batch_size: 32
+  generative_alpha: 7.25
+  generative_beta: 9.58
+  ensemble_alpha: 2.93
+  ensemble_beta: 3.60
+  ensemble_eta: 3.21
+  noise_dim: 32
+  hidden_dim: 32
+  use_embedding: 0
+  coef_decay: 0.09618
+  coef_decay_epoch: 2
+  ensemble_epoch: 50
+  train_generator_epoch: 1
+  min_samples_per_label: 1
+fedfomo:
+  #90.91%(25)
+    M: 5
+    valset_ratio: 0.1
+pfedsim:
+  wr: 0.2
+fedap:
+  pretrain_ratio: 0.2
+  warmup_round: 0.2
+  model_momentum: 0.1

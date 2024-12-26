@@ -3,41 +3,36 @@ metric:
   name: val_accuracy_after  # 要优化的目标指标名称
   goal: maximize  # 优化目标为最大化
 parameters:
-  mode:
-    values: [serial]
-  parallel#num_cpus:
-    values: [48]
-  parallel#num_gpus:
-    values: [4]
-  common#test_interval:
-    values: [10]
+  common#save_fig:
+    values: [False]
   common#wandb:
     values: [True]
-  common#batch_size:
-    values: [32]
-  common#finetune_epoch:
-    values: [1,2,4]
-  optimizer#lr:
-    values: [0.0009, 0.001,0.003,0.009, 0.01]
-  optimizer#momentum:
-    values: [0.001,0.003,0.009,0.01]
   perfedfed#VAE_lr:
-    values: [0.0001, 0.001, 0.01]  # 学习率列表
+    values: [0.0001]
   perfedfed#VAE_weight_decay:
     values: [1e-6, 1e-5, 1e-4]  # 权重衰减列表
   perfedfed#VAE_alpha:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # Alpha参数列表
+    min: 1.0
+    max: 5.0
   perfedfed#VAE_re:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # Reconstruction Loss 权重
+    min: 1.0
+    max: 5.0
   perfedfed#VAE_kl:
-    values: [0.001, 0.01, 0.1]  # KL散度权重
+    min: 0.001
+    max: 5.0
   perfedfed#VAE_ce:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # Cross Entropy 权重
+    min: 1.0
+    max: 5.0
   perfedfed#VAE_x_ce:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # X CE 权重
+    min: 1.0
+    max: 5.0
   perfedfed#consis:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # Consistency Loss 权重
+    min: 1.0
+    max: 5.0
   perfedfed#robust_consis:
-    values: [1.0, 2.0, 3.0, 4.0, 5.0]  # Robust Consistency Loss 权重
+    min: 1.0
+    max: 5.0
   perfedfed#datasets_weights:
-    values: [0.5, 0.7, 0.9, 1.0]  # 数据集权重
+    distribution: uniform
+    min: 0.1
+    max: 1.0
