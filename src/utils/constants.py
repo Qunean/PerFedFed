@@ -59,6 +59,7 @@ DEFAULTS = {
         "num_workers": 2,
     },
     "common": {
+        "malicious_ratio": 0,
         "wandb": False,
         "seed": 42,
         "join_ratio": 0.1,

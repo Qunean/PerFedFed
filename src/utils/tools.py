@@ -14,7 +14,8 @@ from rich.console import Console
 from torch.utils.data import DataLoader
 
 from src.utils.constants import DEFAULTS
-from src.utils.metrics import Metrics
+from src.utils.metrics import Metrics,ASRMetrics
+from src.utils.metrics import Metrics,ASRMetrics
 
 
 def fix_random_seed(seed: int, use_cuda=False) -> None:
@@ -115,6 +116,62 @@ def evalutate_model(
         pred = torch.argmax(logits, -1)
         metrics.update(Metrics(loss, pred, y))
     return metrics
+
+
+@torch.no_grad()
+def evaluate_asr_model(
+        model: torch.nn.Module,
+        dataloader: DataLoader,
+        device=torch.device("cpu"),
+) -> ASRMetrics:
+    """
+    评估模型在触发器样本上的攻击成功率 (ASR)
+
+    Args:
+        model: 待评估的模型
+        dataloader: 测试数据加载器
+        device: 设备 (CPU / GPU)
+
+    Returns:
+        ASRMetrics: 包含 ASR 统计的对象
+    """
+    target_label = 0  # 攻击目标类别
+    model.eval()
+    model.to(device)
+
+    # 初始化 ASRMetrics
+    asrmetrics = ASRMetrics()
+
+    total = 0  # 总样本数
+    correct = 0  # 成功攻击样本数
+
+    for x, y in dataloader:
+        x, y = x.to(device), y.to(device)
+
+        # 忽略原始标签为 0 的样本
+        mask = (y != target_label)
+        if mask.sum() == 0:
+            continue  # 如果批次中所有样本都是标签 0，则跳过当前批次
+
+        # 仅保留非标签为 0 的样本
+        x, y = x[mask], y[mask]
+
+        # 应用触发器
+        x[:, 0, 24:27, 24:27] = 1.0
+        y_trigger = torch.full_like(y, target_label)  # 修改标签为攻击目标标签
+
+        # 模型预测
+        logits = model(x)
+        _, predicted = logits.max(1)
+
+        # 统计成功触发并分类到目标类别的样本
+        total += y.size(0)
+        correct += predicted.eq(y_trigger).sum().item()
+
+    # 更新 ASRMetrics
+    asrmetrics.update(correct=correct, total=total)
+
+    return asrmetrics
 
 
 def parse_args(

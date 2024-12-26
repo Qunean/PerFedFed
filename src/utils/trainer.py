@@ -115,6 +115,10 @@ class FLbenchTrainer:
             for stage in ["before", "after"]:
                 for split in ["train", "val", "test"]:
                     results[stage][split].update(metrics[stage][split])
+            # 安全检查 malicious 是否存在
+            if "malicious" in metrics:
+                for split in ["train", "val", "test"]:
+                    results["malicious"][split].update(other=metrics["malicious"][split])
 
     def _parallel_test(self, clients: list[int], results: dict):
         i = 0
@@ -139,6 +143,10 @@ class FLbenchTrainer:
                     for stage in ["before", "after"]:
                         for split in ["train", "val", "test"]:
                             results[stage][split].update(metrics[stage][split])
+                    # 安全检查 malicious 是否存在
+                    if "malicious" in metrics:
+                        for split in ["train", "val", "test"]:
+                            results["malicious"][split].update(metrics["malicious"][split])
 
     def _serial_exec(
         self,

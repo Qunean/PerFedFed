@@ -4,12 +4,13 @@ from typing import Any
 
 import torch
 from omegaconf import DictConfig
+from ray.tune.examples.pbt_dcgan_mnist.common import batch_size
 from torch.utils.data import DataLoader, Subset
 
 from data.utils.datasets import BaseDataset
-from src.utils.metrics import Metrics
+from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import DecoupledModel
-from src.utils.tools import evalutate_model, get_optimal_cuda_device
+from src.utils.tools import evalutate_model, get_optimal_cuda_device,evaluate_asr_model
 
 
 class FedAvgClient:
@@ -74,6 +75,8 @@ class FedAvgClient:
         self.eval_results = {}
 
         self.return_diff = return_diff
+        self.malicious = False
+
 
     def load_data_indices(self):
         """This function is for loading data indices for No.`self.client_id`
@@ -98,10 +101,14 @@ class FedAvgClient:
             "before": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
             "after": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
         }
+        if self.args.common.malicious_ratio>0:
+            eval_results["malicious"] = {"train": ASRMetrics(), "val": ASRMetrics(), "test": ASRMetrics()}
         eval_results["before"] = self.evaluate()
         if self.local_epoch > 0:
             self.fit()
             eval_results["after"] = self.evaluate()
+            if self.args.common.malicious_ratio >0 :
+                eval_results["malicious"] = self.asr_test()
 
         eval_msg = []
         for split, color, flag, subset in [
@@ -147,6 +154,8 @@ class FedAvgClient:
                 (key, model_params[key].clone().cpu())
                 for key in self.regular_params_name
             )
+        # ------ malicious---
+        self.malicious = True if package["malicious"] == 1 else False
 
     def train(self, server_package: dict[str, Any]):
         self.set_parameters(server_package)
@@ -196,27 +205,98 @@ class FedAvgClient:
                 )
             }
             client_package.pop("regular_model_params")
+        # if self.args.common.malicious_ratio>0:
+            # client_package["malicious_res"] = self.malicious_res
         return client_package
+
+    # def fit(self):
+    #     self.model.train()
+    #     self.dataset.train()
+    #
+    #
+    #     for _ in range(self.local_epoch):
+    #         for x, y in self.trainloader:
+    #             # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
+    #             if len(x) <= 1:
+    #                 continue
+    #
+    #             x, y = x.to(self.device), y.to(self.device)
+    #             logit = self.model(x)
+    #             loss = self.criterion(logit, y)
+    #             self.optimizer.zero_grad()
+    #             loss.backward()
+    #             self.optimizer.step()
+    #
+    #         if self.lr_scheduler is not None:
+    #             self.lr_scheduler.step()
 
     def fit(self):
         self.model.train()
         self.dataset.train()
-        for _ in range(self.local_epoch):
-            for x, y in self.trainloader:
-                # When the current batch size is 1, the batchNorm2d modules in the model would raise error.
-                # So the latent size 1 data batches are discarded.
-                if len(x) <= 1:
-                    continue
 
-                x, y = x.to(self.device), y.to(self.device)
-                logit = self.model(x)
-                loss = self.criterion(logit, y)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+        if self.malicious == True:
+            for ep in range(self.local_epoch * 2 ):  # 每个周期分为两轮（奇数和偶数）
+                if ep % 2 == 0:
+                    # 偶数轮次：进行后门攻击训练
+                    # print(f"Client {self.client_id}: Epoch {ep} - Backdoor Training")
+                    for x, y in self.trainloader:
+                        if len(x) <= 1:
+                            continue  # 避免批次大小为1导致的 BatchNorm2d 错误
+                        x[:, 0, 24:27, 24:27] = 1.0  # 在 (24,24) 到 (26,26) 范围内设置为1.0
+                        # # 在不同位置添加触发器
+                        # if self.client_id % 4 == 0:
+                        #     x[:, 0, 26, 26] = 1.0  # 右下角单像素触发器
+                        # elif self.client_id % 4 == 1:
+                        #     x[:, 0, 24, 26] = 1.0  # 左下角单像素触发器
+                        # elif self.client_id % 4 == 2:
+                        #     x[:, 0, 26, 24] = 1.0  # 右上角单像素触发器
+                        # elif self.client_id % 4 == 3:
+                        #     x[:, 0, 25, 25] = 1.0  # 中心单像素触发器
+
+                        # 修改标签为攻击目标标签（如类别 0）
+                        y = torch.tensor([0] * len(y)).to(self.device)
+
+                        x, y = x.to(self.device), y.to(self.device)
+
+                        self.optimizer.zero_grad()
+                        logit = self.model(x)
+                        loss = self.criterion(logit, y)
+                        loss.backward()
+                        self.optimizer.step()
+                else:
+                    # 奇数轮次：正常训练
+                    # print(f"Client {self.client_id}: Epoch {ep} - Standard Training")
+                    for x, y in self.trainloader:
+                        if len(x) <= 1:
+                            continue  # 避免批次大小为1导致的 BatchNorm2d 错误
+
+                        x, y = x.to(self.device), y.to(self.device)
+
+                        self.optimizer.zero_grad()
+                        logit = self.model(x)
+                        loss = self.criterion(logit, y)
+                        loss.backward()
+                        self.optimizer.step()
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
+        else:
+            for _ in range(self.local_epoch):
+                for x, y in self.trainloader:
+                    # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
+                    if len(x) <= 1:
+                        continue
+
+                    x, y = x.to(self.device), y.to(self.device)
+                    logit = self.model(x)
+                    loss = self.criterion(logit, y)
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
+                if self.lr_scheduler is not None:
+                    self.lr_scheduler.step()
+
 
     @torch.no_grad()
     def evaluate(self, model: torch.nn.Module = None) -> dict[str, Metrics]:
@@ -288,12 +368,15 @@ class FedAvgClient:
             "before": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
             "after": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
         }
-
+        if self.args.common.malicious_ratio>0:
+            results["malicious"] = {"train": ASRMetrics(), "val": ASRMetrics(), "test": ASRMetrics()}
         results["before"] = self.evaluate()
         if self.args.common.finetune_epoch > 0:
             frz_params_dict = deepcopy(self.model.state_dict())
             self.finetune()
             results["after"] = self.evaluate()
+            if self.args.common.malicious_ratio >0 :
+                results["malicious"] = self.asr_test()
             self.model.load_state_dict(frz_params_dict)
 
         self.testing = False
@@ -317,3 +400,34 @@ class FedAvgClient:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+    def asr_test(self,model: torch.nn.Module = None):
+        target_model = self.model if model is None else model
+        target_model.eval()
+        self.dataset.eval()
+        train_asr_metrics = ASRMetrics()
+        val_asr_metrics = ASRMetrics()
+        test_asr_metrics = ASRMetrics()
+
+        if len(self.testset) > 0 and self.args.common.eval_test:
+            test_asr_metrics = evaluate_asr_model(
+                model=target_model,
+                dataloader=self.testloader,
+                device=self.device,
+            )
+
+        if len(self.valset) > 0 and self.args.common.eval_val:
+            val_asr_metrics = evaluate_asr_model(
+                model=target_model,
+                dataloader=self.valloader,
+                device=self.device,
+            )
+
+        if len(self.trainset) > 0 and self.args.common.eval_train:
+            train_asr_metrics = evaluate_asr_model(
+                model=target_model,
+                dataloader=self.trainloader,
+                device=self.device,
+            )
+        return {"train": train_asr_metrics, "val": val_asr_metrics, "test": test_asr_metrics}
+

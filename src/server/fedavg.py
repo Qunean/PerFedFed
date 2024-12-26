@@ -33,7 +33,7 @@ from src.utils.constants import (
     MODE,
     OPTIMIZERS,
 )
-from src.utils.metrics import Metrics
+from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import MODELS, DecoupledModel
 from src.utils.tools import Logger, fix_random_seed, get_optimal_cuda_device
 from src.utils.trainer import FLbenchTrainer
@@ -136,6 +136,13 @@ class FedAvgServer:
         self.client_local_epoches: list[int] = [
             self.args.common.local_epoch
         ] * self.client_num
+        #--------------------------------------------malicious-----------------------------------------
+        self.clients_malicious_label = [0] * self.client_num
+        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1:
+            malicious_client_num = int(self.client_num * self.args.common.malicious_ratio)
+            # 将前 `malicious_client_num` 个客户端的标签设置为 1（恶意客户端）
+            for i in range(malicious_client_num):
+                self.clients_malicious_label[i] = 1
 
         # system heterogeneity (straggler) setting
         if (
@@ -470,6 +477,7 @@ class FedAvgServer:
             optimizer_state=self.client_optimizer_states[client_id],
             lr_scheduler_state=self.client_lr_scheduler_states[client_id],
             return_diff=self.return_diff,
+            malicious = self.clients_malicious_label[client_id]
         )
 
     def test(self):
@@ -481,6 +489,8 @@ class FedAvgServer:
             "before": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
             "after": {"train": Metrics(), "val": Metrics(), "test": Metrics()},
         }
+        if self.args.common.malicious_ratio>0:
+            template["malicious"]={"train":ASRMetrics(),"val":ASRMetrics(),"test":ASRMetrics()}
         if len(clients) > 0:
             if self.val_clients == self.train_clients == self.test_clients:
                 results = {"all_clients": template}
@@ -763,7 +773,8 @@ class FedAvgServer:
 
         self.show_convergence()
         self.show_max_metrics()
-
+        if self.args.common.malicious_ratio>0:
+            self.show_malicious_res()
         self.logger.close()
 
         # plot the training curves
@@ -831,3 +842,46 @@ class FedAvgServer:
                     f"{self.algorithm_name}'s unique_model = True, which does not support saving model parameters. "
                     "So the saving is skipped."
                 )
+
+    def show_malicious_res(self):
+        """
+        从 self.test_results 中提取每一轮的 ASR 结果并输出为嵌套字典结构。
+        """
+        # 构建 ASR 结果的嵌套字典
+        all_asr_results = {
+            epoch: {
+                group: {
+                    split: {
+                        "ASR": f"{metrics['malicious'][split].asr:.2f}%" if "malicious" in metrics and split in metrics[
+                            "malicious"] else "N/A",
+                        "Correct": metrics["malicious"][split].correct if "malicious" in metrics and split in metrics[
+                            "malicious"] else "N/A",
+                        "Total": metrics["malicious"][split].total if "malicious" in metrics and split in metrics[
+                            "malicious"] else "N/A",
+                    }
+                    for split, flag in [
+                        ("train", self.args.common.eval_train),
+                        ("val", self.args.common.eval_val),
+                        ("test", self.args.common.eval_test),
+                    ]
+                    if flag
+                }
+                for group, metrics in results.items()
+            }
+            for epoch, results in self.test_results.items()
+        }
+
+        # 打印 ASR 结果
+        self.logger.log("Malicious Results (ASR):")
+        for epoch, groups in all_asr_results.items():
+            self.logger.log(f"Epoch {epoch}:")
+            for group, splits in groups.items():
+                self.logger.log(f"  Group {group}:")
+                for split, values in splits.items():
+                    self.logger.log(
+                        f"    {split.capitalize()} - ASR: {values['ASR']}, Correct: {values['Correct']}, Total: {values['Total']}"
+                    )
+
+        # return all_asr_results
+
+

@@ -75,13 +75,15 @@ parallel:
   num_workers: 2
 
 common:
+  malicious_ratio: 1.0
+  wandb: false
   seed: 42 # Random seed of the run.
-  join_ratio: 0.1 # Ratio for (client each round) / (client num in total).
-  global_epoch: 100 # Number of global epochs, also called communication round.
+  join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
+  global_epoch: 5 # Number of global epochs, also called communication round.
   local_epoch: 5 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.
-  test_interval: 10 # Interval round of performing test on all test clients.
+  test_interval: 1 # Interval round of performing test on all test clients.
 
   # The ratio of stragglers (set in [0, 1]).
   # Stragglers would not perform full-epoch local training as normal clients.
@@ -98,8 +100,8 @@ common:
   # Set eval_<...> as true for performing evaluation on <...>sets held by
   # this round's joined clients before and after local training.
   eval_test: true
-  eval_val: false
-  eval_train: false
+  eval_val: true
+  eval_train: true
 
   verbose_gap: 10 # Interval round of displaying clients training performance on terminal.
   monitor: null # [null, visdom, tensorboard]

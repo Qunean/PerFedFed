@@ -74,3 +74,60 @@ class Metrics:
     @property
     def size(self):
         return len(self._targets)
+
+class ASRMetrics:
+    """
+    专门用于记录和计算攻击成功率（ASR: Attack Success Rate）的类
+    """
+    def __init__(self):
+        self._correct = 0  # 成功触发并预测到目标类别的样本数
+        self._total = 0    # 总触发样本数
+
+    def update(self, correct: int = None, total: int = None, other: "ASRMetrics" = None):
+        # print(f"update called with correct={correct}, total={total}, other={type(other)}")
+        if other is not None:
+            if not isinstance(other, ASRMetrics):
+                raise TypeError(f"The 'other' parameter must be an instance of ASRMetrics, got {type(other)}.")
+            self._correct += other._correct
+            self._total += other._total
+        elif correct is not None and total is not None:
+            if total < 0 or correct < 0:
+                raise ValueError("Both 'correct' and 'total' must be non-negative integers.")
+            self._correct += correct
+            self._total += total
+        else:
+            raise ValueError("Either 'other' (ASRMetrics instance) or both 'correct' and 'total' must be provided.")
+
+    def reset(self):
+        """
+        重置统计数据
+        """
+        self._correct = 0
+        self._total = 0
+
+    @property
+    def asr(self) -> float:
+        """
+        计算攻击成功率 (ASR)
+        :return: 攻击成功率的百分比 (0-100%)
+        """
+        if self._total == 0:
+            return 0.0
+        return (self._correct / self._total) * 100
+
+    @property
+    def correct(self) -> int:
+        """
+        返回成功攻击的样本数
+        """
+        return self._correct
+
+    @property
+    def total(self) -> int:
+        """
+        返回触发样本的总数量
+        """
+        return self._total
+
+    def __str__(self):
+        return f"ASR: {self.asr:.2f}%, Correct: {self._correct}, Total: {self._total}"
