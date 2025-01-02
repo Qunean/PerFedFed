@@ -33,10 +33,10 @@
 #echo "All tasks completed." | tee -a "$log_file"
 
 # 所有方法列表
-methods=("perfedfed")
-
+#methods=("perfedfed")
+methods=("perfedfed" "local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr"  "fedala" "kNNPer" "fedrep" "fedAP" "fedap" "fedfomo")
 # 输出日志文件
-log_file="output_cifar10a1.0_vaelr_dataweig.txt"
+log_file="output_mnista0.05.txt"
 
 # 清空日志文件
 > "$log_file"
@@ -44,8 +44,8 @@ log_file="output_cifar10a1.0_vaelr_dataweig.txt"
 # 循环每个方法并按顺序运行
 for method in "${methods[@]}"; do
     # 查找 cifar10 下所有 metrics.csv 文件
-    csv_files=$(find "../grid_search/out/$method/" \
-        -type f -path "*/cifar10/*" -name "metrics.csv")
+    csv_files=$(find "out/$method/" \
+        -type f -path "*/mnist/*" -name "metrics.csv")
 
     # 检查是否找到文件
     if [[ -z "$csv_files" ]]; then
