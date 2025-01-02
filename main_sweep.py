@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import yaml
 import wandb
-# wandb.api.default_http_timeout = 300  # 增大超时时间
 import hydra
 from omegaconf import DictConfig
 from src.server.fedavg import FedAvgServer
@@ -17,7 +16,7 @@ if FLBENCH_ROOT not in sys.path:
     sys.path.append(FLBENCH_ROOT.as_posix())
 
 # 最大 Sweep 运行次数
-MAX_SWEEP_RUNS = 2
+MAX_SWEEP_RUNS = 100
 SWEEP_CONFIG_FILE = FLBENCH_ROOT / "wandbSweep_config/perfedfed.yaml"
 
 
@@ -90,7 +89,7 @@ def main(config: DictConfig):
     """主程序入口"""
 
     def sweep_train(wandb_config=None):
-        with wandb.init(config=wandb_config, project="fed_learning_project") as run:
+        with wandb.init(config=wandb_config, project="perfedfed_cifar10a1.0_v100") as run:
             # 加载 WandB 配置
             wandb_config = parse_parameters(wandb.config)
             # 设置运行名称
@@ -128,8 +127,8 @@ def main(config: DictConfig):
     with open(SWEEP_CONFIG_FILE, 'r') as file:
         raw_sweep_config = yaml.safe_load(file)
 
-    sweep_id = wandb.sweep(raw_sweep_config, project="new_perfedfed_cifar10a0.1_3080")
-
+    sweep_id = wandb.sweep(raw_sweep_config, project="perfedfed_cifar10a1.0_v100")
+    # sweep_id = "exlaypxi"
     # 限制 Sweep 的最大运行次数
     wandb.agent(sweep_id, function=sweep_train, count=MAX_SWEEP_RUNS)
 

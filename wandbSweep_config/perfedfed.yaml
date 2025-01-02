@@ -1,6 +1,6 @@
 method: bayes
 metric:
-  name: val_accuracy_after  # 要优化的目标指标名称
+  name: val_accuracy_before  # 要优化的目标指标名称
   goal: maximize  # 优化目标为最大化
 parameters:
   common#save_fig:

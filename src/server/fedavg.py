@@ -4,6 +4,7 @@ import json
 import os
 import pickle
 import random
+import csv
 import shutil
 import time
 import traceback
@@ -416,7 +417,6 @@ class FedAvgServer:
 
             if self.verbose:
                 self.logger.log("-" * 28, f"TRAINING EPOCH: {E + 1}", "-" * 28)
-
             self.selected_clients = self.client_sample_stream[E]
             begin = time.time()
             self.train_one_round()
@@ -425,7 +425,6 @@ class FedAvgServer:
             avg_round_time = (avg_round_time * self.current_epoch + (end - begin)) / (
                 self.current_epoch + 1
             )
-
             if (E + 1) % self.args.common.test_interval == 0:
                 self.test()
 
@@ -679,6 +678,69 @@ class FedAvgServer:
                                 f"[{colors[stage]}]{stage}[/{colors[stage]}] "
                                 f"fine-tuning: {max_acc:.2f}% at epoch {epoch}"
                             )
+            self.logger.log("=" * 20, self.algorithm_name, " Table results", "=" * 20)
+            # === 新增功能: val_before_finetune 最大值相关的 test_before_finetune 和 test_after_finetune ===
+            if self.args.common.eval_val and self.args.common.eval_test:
+                val_before_metrics_list = list(
+                    map(
+                        lambda tup: (tup[0], tup[1][group]["before"]["val"]),
+                        self.test_results.items(),
+                    )
+                )
+                if len(val_before_metrics_list) > 0:
+                    max_val_epoch, max_val_before_acc = max(
+                        [
+                            (epoch, metrics.accuracy)
+                            for epoch, metrics in val_before_metrics_list
+                        ],
+                        key=lambda tup: tup[1],
+                    )
+
+                    # 获取相同 epoch 下的 test_before 和 test_after
+                    test_before_acc = self.test_results[max_val_epoch][group]["before"]["test"].accuracy
+                    test_after_acc = self.test_results[max_val_epoch][group]["after"]["test"].accuracy
+                    self.logger.log(
+                        f"val_before_finetune "
+                        f"max accuracy: {max_val_before_acc:.2f}% at epoch {max_val_epoch}"
+                    )
+                    self.logger.log(
+                        f"Corresponding test_before_finetune "
+                        f"accuracy: {test_before_acc:.2f}%({max_val_epoch})"
+                    )
+                    self.logger.log(
+                        f"Corresponding test_after_finetune "
+                        f"accuracy: {test_after_acc:.2f}%({max_val_epoch})"
+                    )
+                    # # method_name datasets a=? {test_before_acc:.2f}%({max_val_epoch} {test_after_acc:.2f}%({max_val_epoch}
+                    # #写入一个csv文件中
+                    # csv_file = os.path.join(r"/home/zjn_projects/graduate_project/PerFedFed/tools/out", "max_metrics_results_mnista0.5.csv")
+                    # os.makedirs(os.path.dirname(csv_file), exist_ok=True)
+                    #
+                    # csv_headers = [
+                    #     "method_name",
+                    #     "datasets",
+                    #     "a",
+                    #     "test_before_finetune",
+                    #     "test_after_finetune"
+                    # ]
+                    #
+                    # csv_row = {
+                    #     "method_name": self.algorithm_name,
+                    #     "datasets": self.args.dataset.name,
+                    #     "a": self.args.dataset.alpha,
+                    #     "test_before_finetune": f"{test_before_acc:.2f}%({max_val_epoch})",
+                    #     "test_after_finetune": f"{test_after_acc:.2f}%({max_val_epoch})"
+                    # }
+                    #
+                    # # === 追加到 CSV 文件，仅第一次写入表头 ===
+                    # file_exists = os.path.isfile(csv_file)
+                    # with open(csv_file, mode='a', newline='') as file:
+                    #     writer = csv.DictWriter(file, fieldnames=csv_headers)
+                    #     if not file_exists:
+                    #         writer.writeheader()  # 如果文件不存在，写入表头
+                    #     writer.writerow(csv_row)  # 追加一行数据
+                    #
+                    # self.logger.log(f"Results saved to {csv_file}")
 
     def run(self):
         """The entrypoint of FL-bench experiment.
@@ -820,6 +882,7 @@ class FedAvgServer:
                                 value=np.array(stats).T,
                             )
             df.to_csv(self.output_dir / f"metrics.csv", index=True, index_label="epoch")
+
 
         # save trained model(s) parameters
         if self.args.common.save_model:

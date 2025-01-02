@@ -81,7 +81,7 @@ common:
   local_epoch: 5 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.
-  test_interval: 10 # Interval round of performing test on all test clients.
+  test_interval: 1 # Interval round of performing test on all test clients.
 
   # The ratio of stragglers (set in [0, 1]).
   # Stragglers would not perform full-epoch local training as normal clients.
