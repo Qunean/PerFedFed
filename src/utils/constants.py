@@ -60,6 +60,7 @@ DEFAULTS = {
     },
     "common": {
         "malicious_ratio": 0,
+        "defense_method": None,
         "wandb": False,
         "seed": 42,
         "join_ratio": 0.1,

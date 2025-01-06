@@ -122,7 +122,115 @@ class PerFedFedServer(FedAvgServer):
             self.client_optimizer_states[client_id].update(package["optimizer_state"])
             self.client_lr_scheduler_states[client_id].update(package["lr_scheduler_state"])
 
-        print("Warm-up phase completed for all clients.")
+        self.logger.log("Warm-up phase completed for all clients.")
+
+
+
+
+    # @torch.no_grad()
+    # def aggregate(self, clients_package: OrderedDict[int, dict[str, Any]]):
+    #     # -------------------------------1. 计算参数变化 (VAE_regular_params)-------------------------------
+    #     param_diffs = []
+    #     for client_id, package in clients_package.items():
+    #         client_params = package["VAE_regular_params"]
+    #         diff = 0.0
+    #         for key, param in client_params.items():
+    #             global_param = self.global_VAE_params[key]
+    #             diff += torch.norm(param - global_param, p=2).item()  # 计算L2范数差异
+    #         param_diffs.append(diff)
+    #
+    #     param_diffs = torch.tensor(param_diffs, dtype=torch.float)
+    #
+    #     # -------------------------------2. 异常检测-------------------------------
+    #     mean_diff = param_diffs.mean()
+    #     std_diff = param_diffs.std()
+    #     threshold = mean_diff + 0.5 * std_diff  # 设置3倍标准差作为阈值
+    #
+    #     mask = param_diffs <= threshold  # 合法客户端为 True，异常客户端为 False
+    #
+    #     valid_client_ids = [cid for i, cid in enumerate(clients_package.keys()) if mask[i]]
+    #     invalid_client_ids = [cid for i, cid in enumerate(clients_package.keys()) if not mask[i]]
+    #
+    #     self.logger.log(f"⚠️ 检测到 {len(invalid_client_ids)} 个异常客户端: {invalid_client_ids}")
+    #
+    #     # -------------------------------3. 更新 clients_pred_result-------------------------------
+    #     for i, cid in enumerate(clients_package.keys()):
+    #         if mask[i]:
+    #             # 当前轮次检测为良性客户端 -> 重置为0
+    #             self.clients_pred_result[cid] = 0
+    #         else:
+    #             # 当前轮次检测为恶意客户端 -> 保持或设置为1
+    #             self.clients_pred_result[cid] = 1
+    #
+    #             # 打印客户端恶意状态
+    #     self.logger.log(f"🛡️ 客户端状态标记 (最新检测结果): {self.clients_pred_result}")
+    #     self.evaluate_detection()
+    #     # -------------------------------4. 筛选合法客户端-------------------------------
+    #     valid_clients_package = {
+    #         cid: clients_package[cid] for cid in valid_client_ids
+    #     }
+    #
+    #     # -------------------------------5. 重新计算权重-------------------------------
+    #     entropy_weights = torch.tensor(
+    #         [package["label_entropy"] for cid, package in valid_clients_package.items()],
+    #         dtype=torch.float,
+    #     )
+    #     entropy_weights /= entropy_weights.sum()
+    #     entropy_weights=entropy_weights.squeeze()
+    #
+    #     weights = torch.tensor(
+    #         [package["weight"] for cid, package in valid_clients_package.items()],
+    #         dtype=torch.float,
+    #     )
+    #     weights /= weights.sum()
+    #
+    #     VAE_weights = (1 - self.args.perfedfed.datasets_weights) * entropy_weights + self.args.perfedfed.datasets_weights * weights
+    #     VAE_weights /= VAE_weights.sum()
+    #
+    #     # -------------------------------6. 聚合 VAE 参数-------------------------------
+    #     for key, global_param in self.global_VAE_params.items():
+    #         client_VAE_params = torch.stack(
+    #             [
+    #                 package["VAE_regular_params"][key]
+    #                 for cid, package in valid_clients_package.items()
+    #             ],
+    #             dim=-1,
+    #         )
+    #         global_param.data = torch.sum(
+    #             client_VAE_params * VAE_weights,
+    #             dim=-1,
+    #             dtype=global_param.dtype,
+    #         ).to(global_param.device)
+    #
+    #     # -------------------------------7. 聚合公共模型参数-------------------------------
+    #     if self.return_diff:
+    #         for name, global_param in self.public_model_params.items():
+    #             diffs = torch.stack(
+    #                 [
+    #                     package["model_params_diff"][name]
+    #                     for cid, package in valid_clients_package.items()
+    #                 ],
+    #                 dim=-1,
+    #             )
+    #             aggregated = torch.sum(
+    #                 diffs * weights, dim=-1, dtype=global_param.dtype
+    #             ).to(global_param.device)
+    #             self.public_model_params[name].data -= aggregated
+    #     else:
+    #         for name, global_param in self.public_model_params.items():
+    #             client_params = [
+    #                 package["regular_model_params"][name]
+    #                 for cid, package in valid_clients_package.items()
+    #                 if name in package["regular_model_params"]
+    #             ]
+    #             if not client_params:
+    #                 continue  # 如果没有客户端提供此参数，跳过
+    #
+    #             client_params = torch.stack(client_params, dim=-1)
+    #             aggregated = torch.sum(
+    #                 client_params * weights, dim=-1, dtype=global_param.dtype
+    #             ).to(global_param.device)
+    #             global_param.data = aggregated
 
     @torch.no_grad()
     def aggregate(self, clients_package: OrderedDict[int, dict[str, Any]]):

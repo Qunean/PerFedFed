@@ -21,6 +21,7 @@ from omegaconf import DictConfig, OmegaConf
 from rich.console import Console
 from rich.pretty import pprint as rich_pprint
 from rich.progress import track
+# from torchaudio.transforms import AddNoise
 from torchvision import transforms
 
 from data.utils.datasets import DATASETS, BaseDataset
@@ -37,7 +38,7 @@ from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import MODELS, DecoupledModel
 from src.utils.tools import Logger, fix_random_seed, get_optimal_cuda_device
 from src.utils.trainer import FLbenchTrainer
-
+from src.utils.defender import WeightDiffClippingDefense,AddNoiseDefense,KrumDefense,PerFedFedDefense
 
 class FedAvgServer:
     def __init__(
@@ -138,6 +139,7 @@ class FedAvgServer:
         ] * self.client_num
         #--------------------------------------------malicious-----------------------------------------
         self.clients_malicious_label = [0] * self.client_num
+        self.clients_pred_result=[0] * self.client_num
         if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1:
             malicious_client_num = int(self.client_num * self.args.common.malicious_ratio)
             # 将前 `malicious_client_num` 个客户端的标签设置为 1（恶意客户端）
@@ -166,6 +168,7 @@ class FedAvgServer:
         # To make sure all algorithms run through the same client sampling stream.
         # Some algorithms' implicit operations at client side may
         # disturb the stream if sampling happens at each FL round's beginning.
+        # 如果这里要过滤恶意客户端 需要修改。
         self.client_sample_stream = [
             random.sample(
                 self.train_clients,
@@ -446,7 +449,10 @@ class FedAvgServer:
         server side) in each communication round."""
 
         client_packages = self.trainer.train()
-        self.aggregate(client_packages)
+        #加上异常检测的流程
+        self.defense(client_packages, self.args.common.defense_method)
+        # defender中加上aggregate的逻辑。根据defense_method 来选择defender
+        # self.aggregate(client_packages)
 
     def package(self, client_id: int):
         """Package parameters that the client-side training needs. If you are
@@ -882,6 +888,34 @@ class FedAvgServer:
                         f"    {split.capitalize()} - ASR: {values['ASR']}, Correct: {values['Correct']}, Total: {values['Total']}"
                     )
 
-        # return all_asr_results
+
+
+    def defense(self, client_packages, defense_method):
+        # 目前只实现fedavg以及perfedfed的defense方法
+        support_algorithm_names = ["fedavg","perfedfed"]
+        support_defense_names = ["weightDiffClipping", "AddNoise", "Krum", "PerFedFed"]
+        if defense_method is None or defense_method not in support_defense_names and self.algorithm_name not in support_algorithm_names:
+            # 如果未指定防御方法或防御方法未知，直接调用 aggregate 进行普通聚合
+            self.logger.log(f"Defense method '{defense_method}' is unknown. Using default aggregation.")
+            self.aggregate(client_packages)
+        elif defense_method == "weightDiffClipping":
+            self.defender = WeightDiffClippingDefense(norm_bound=1.5)
+            self.defender.exec(client_packages,self.public_model_params)
+            self.aggregate(client_packages)
+        elif defense_method == "AddNoise":
+            self.defender = AddNoiseDefense()
+            defense_client_packages = self.defender.exec(client_packages, self.public_model_params)
+            self.defender.aggregate(defense_client_packages)
+        elif defense_method == "Krum":
+            self.defender = KrumDefense()
+            defense_client_packages = self.defender.exec(client_packages, self.public_model_params)
+            self.defender.aggregate(defense_client_packages)
+        # perfedfed的防御方法只能针对perfedfed！
+        elif defense_method == "PerFedFed" and (self.algorithm_name).lower() =="perfedfed":
+            self.defender = PerFedFedDefense(bound=0.5,clients_malicious_label=self.clients_malicious_label,logger=self.logger,clients_pred_result = self.clients_pred_result)
+            defense_client_packages = self.defender.exec(client_packages, self.global_VAE_params)
+            self.aggregate(defense_client_packages)
+        else:
+            self.aggregate(client_packages)
 
 
