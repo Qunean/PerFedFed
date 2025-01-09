@@ -36,6 +36,8 @@ class PerFedFedClient(FedAvgClient):
                 if len(y) <= 1:
                     continue
                 x, y = x.to(self.device), y.to(self.device)
+                if self.malicious:
+                    x, y = self.attack(x, y, self.args.common.attack_method)
                 batch_size = x.shape[0]
                 robust, mu, logvar = self.VAE(x)
                 if (local_e == self.local_epoch-1 and self.args.perfedfed.display_robust_feature==True and self.args.common.wandb==True):

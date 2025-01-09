@@ -61,6 +61,9 @@ DEFAULTS = {
     "common": {
         "malicious_ratio": 0,
         "defense_method": None,
+        "attack_method": "blackbox_trigger",
+        "poisoned_batch_size": 5,
+        "target_label": 0,
         "wandb": False,
         "seed": 42,
         "join_ratio": 0.1,

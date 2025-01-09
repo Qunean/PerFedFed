@@ -12,7 +12,7 @@ import torch
 from omegaconf import DictConfig
 from rich.console import Console
 from torch.utils.data import DataLoader
-
+from torchvision.transforms import ToPILImage
 from src.utils.constants import DEFAULTS
 from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.metrics import Metrics,ASRMetrics
@@ -51,7 +51,7 @@ def get_optimal_cuda_device(use_cuda: bool) -> torch.device:
     gpu_memory = []
     if "CUDA_VISIBLE_DEVICES" in os.environ.keys():
         gpu_ids = [int(i) for i in os.environ["CUDA_VISIBLE_DEVICES"].split(",")]
-        assert max(gpu_ids) < torch.cuda.device_count()
+        # assert max(gpu_ids) < torch.cuda.device_count()
     else:
         gpu_ids = range(torch.cuda.device_count())
 
@@ -117,6 +117,19 @@ def evalutate_model(
         metrics.update(Metrics(loss, pred, y))
     return metrics
 
+def add_trigger(input: torch.Tensor) -> torch.Tensor:
+    """
+    在输入图像的特定位置添加触发器。
+
+    Args:
+        input (torch.Tensor): 输入图像张量，形状为 (3, 32, 32)。
+
+    Returns:
+        torch.Tensor: 添加触发器后的图像张量。
+    """
+    assert input.ndim == 4, "Inputs must have shape (B, C, H, W)"
+    input[:, :,24:27, 24:27] = 1.0  # 在图像右下角添加触发器
+    return input
 
 @torch.no_grad()
 def evaluate_asr_model(
@@ -156,8 +169,8 @@ def evaluate_asr_model(
         # 仅保留非标签为 0 的样本
         x, y = x[mask], y[mask]
 
-        # 应用触发器
-        x[:, 0, 24:27, 24:27] = 1.0
+        x = add_trigger(x)
+        # save_tensor_as_image(x[0],"tmp_x_test.png")
         y_trigger = torch.full_like(y, target_label)  # 修改标签为攻击目标标签
 
         # 模型预测
@@ -305,6 +318,22 @@ def seperate_model_regular_personal(dummy_model, buffer_type: str):
     return regular_params_name,regular_params, personal_params_name,personal_params
 
 
+def save_tensor_as_image(tensor, file_path):
+    """
+    将 PyTorch Tensor 保存为 PNG 图像文件。
+    :param tensor: (3, 32, 32) 的 Tensor
+    :param file_path: 保存路径
+    """
+    # 确保张量在 CPU 上，并将数值限制在 [0, 1]
+    tensor = tensor.cpu().clone().detach()
+    tensor = torch.clamp(tensor, 0, 1)  # 限制像素值在 [0,1] 范围内
+
+    # 转换为 PIL 图像
+    image = ToPILImage()(tensor)
+
+    # 保存为 PNG 文件
+    image.save(file_path)
+    print(f"✅ 图像已保存至: {file_path}")
 
 class Logger:
     def __init__(

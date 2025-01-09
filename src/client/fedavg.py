@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Subset
 from data.utils.datasets import BaseDataset
 from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import DecoupledModel
-from src.utils.tools import evalutate_model, get_optimal_cuda_device,evaluate_asr_model
+from src.utils.tools import evalutate_model, get_optimal_cuda_device,evaluate_asr_model,save_tensor_as_image,add_trigger
 
 
 class FedAvgClient:
@@ -123,6 +123,18 @@ class FedAvgClient:
                     f"loss: {eval_results['before'][split].loss:.4f} -> {eval_results['after'][split].loss:.4f}\t"
                     f"accuracy: {eval_results['before'][split].accuracy:.2f}% -> {eval_results['after'][split].accuracy:.2f}%"
                 )
+                # 添加 malicious 信息
+                if self.args.common.malicious_ratio > 0 and "malicious" in eval_results:
+                    malicious_results = eval_results["malicious"].get(split, None)
+                    if malicious_results:
+                        # 根据 self.malicious 设置颜色
+                        color = "red" if self.malicious else "black"
+                        eval_msg.append(
+                            f"client [{self.client_id}]\t"
+                            f"[{color}]({split}set-malicious)\t"
+                            f"ASR: {malicious_results.asr:.2f}%\t"
+                            f"Correct: {malicious_results.correct}/{malicious_results.total}"
+                        )
 
         eval_results["message"] = eval_msg
         self.eval_results = eval_results
@@ -212,8 +224,8 @@ class FedAvgClient:
     # def fit(self):
     #     self.model.train()
     #     self.dataset.train()
-    #
-    #
+    #     if self.malicious == True:
+    #         attack(self.trainloader,self.args.common.attack_method)
     #     for _ in range(self.local_epoch):
     #         for x, y in self.trainloader:
     #             # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
@@ -233,69 +245,138 @@ class FedAvgClient:
     def fit(self):
         self.model.train()
         self.dataset.train()
+        for _ in range(self.local_epoch):
+            for x, y in self.trainloader:
+                # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
+                if len(x) <= 1:
+                    continue
 
-        if self.malicious == True:
-            for ep in range(self.local_epoch * 2 ):  # 每个周期分为两轮（奇数和偶数）
-                if ep % 2 == 0:
-                    # 偶数轮次：进行后门攻击训练
-                    # print(f"Client {self.client_id}: Epoch {ep} - Backdoor Training")
-                    for x, y in self.trainloader:
-                        if len(x) <= 1:
-                            continue  # 避免批次大小为1导致的 BatchNorm2d 错误
-                        x[:, 0, 24:27, 24:27] = 1.0  # 在 (24,24) 到 (26,26) 范围内设置为1.0
-                        # # 在不同位置添加触发器
-                        # if self.client_id % 4 == 0:
-                        #     x[:, 0, 26, 26] = 1.0  # 右下角单像素触发器
-                        # elif self.client_id % 4 == 1:
-                        #     x[:, 0, 24, 26] = 1.0  # 左下角单像素触发器
-                        # elif self.client_id % 4 == 2:
-                        #     x[:, 0, 26, 24] = 1.0  # 右上角单像素触发器
-                        # elif self.client_id % 4 == 3:
-                        #     x[:, 0, 25, 25] = 1.0  # 中心单像素触发器
+                x, y = x.to(self.device), y.to(self.device)
 
-                        # 修改标签为攻击目标标签（如类别 0）
-                        y = torch.tensor([0] * len(y)).to(self.device)
+                if self.malicious:
+                    x, y = self.attack(x, y, self.args.common.attack_method)
 
-                        x, y = x.to(self.device), y.to(self.device)
-
-                        self.optimizer.zero_grad()
-                        logit = self.model(x)
-                        loss = self.criterion(logit, y)
-                        loss.backward()
-                        self.optimizer.step()
-                else:
-                    # 奇数轮次：正常训练
-                    # print(f"Client {self.client_id}: Epoch {ep} - Standard Training")
-                    for x, y in self.trainloader:
-                        if len(x) <= 1:
-                            continue  # 避免批次大小为1导致的 BatchNorm2d 错误
-
-                        x, y = x.to(self.device), y.to(self.device)
-
-                        self.optimizer.zero_grad()
-                        logit = self.model(x)
-                        loss = self.criterion(logit, y)
-                        loss.backward()
-                        self.optimizer.step()
+                logit = self.model(x)
+                loss = self.criterion(logit, y)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
+
+    def attack(self, inputs, labels, attack_method):
+        if attack_method == "blackbox_trigger":
+            # 生成带有触发器的中毒数据
+            poisoned_inputs, poisoned_labels = self.generate_poisoned_data(inputs,labels,self.args.common.poisoned_batch_size)
+
+            return poisoned_inputs, poisoned_labels
         else:
-            for _ in range(self.local_epoch):
-                for x, y in self.trainloader:
-                    # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
-                    if len(x) <= 1:
-                        continue
+            # 未实现的攻击方法
+            raise NotImplementedError(f"攻击方法 '{attack_method}' 尚未实现。")
 
-                    x, y = x.to(self.device), y.to(self.device)
-                    logit = self.model(x)
-                    loss = self.criterion(logit, y)
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
+    def generate_poisoned_data(self, inputs: torch.Tensor, labels: torch.Tensor, num_poisoned: int):
+        """
+        批量生成带触发器的中毒数据。
 
-                if self.lr_scheduler is not None:
-                    self.lr_scheduler.step()
+        Args:
+            inputs (torch.Tensor): 输入图像张量，形状为 (B, C, H, W)。
+            labels (torch.Tensor): 输入标签张量，形状为 (B,)。
+            num_poisoned (int): 需要中毒的样本数量。
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: 带触发器的输入和修改后的标签。
+        """
+        # 确保 num_poisoned 不超过输入数据的数量
+        num_poisoned = min(num_poisoned, len(inputs))
+
+        # 生成随机、不重复的索引
+        indices = torch.randperm(len(inputs))[:num_poisoned]
+
+        # 克隆输入和标签以避免原始数据被修改
+        poisoned_inputs = inputs.clone()
+        poisoned_labels = labels.clone()
+
+        # 批量应用触发器
+        poisoned_inputs[indices] = add_trigger(poisoned_inputs[indices])
+
+        # 修改指定索引的标签为目标类别
+        poisoned_labels[indices] = torch.tensor(self.args.common.target_label, dtype=poisoned_labels.dtype,
+                                                device=poisoned_labels.device)
+
+        return poisoned_inputs, poisoned_labels
+
+
+    # def attack(self, dataloader, attack_method):
+    #     if attack_method == "blackbox_trigger":
+    #         # 实现 blackbox_trigger 攻击方法
+    #         for data in dataloader:
+    #             inputs, labels = data
+    #             # 在此处添加触发器到输入数据
+    #             triggered_inputs = self.add_trigger(inputs)
+    #             # 将触发器输入传递给模型
+    #             outputs = self.model(triggered_inputs)
+    #             # 在此处添加对攻击结果的处理，例如计算成功率等
+    #             self.process_attack_results(outputs, labels)
+    #     else:
+    #         # 未实现的攻击方法
+    #         raise NotImplementedError(f"攻击方法 '{attack_method}' 尚未实现。")
+
+    # def fit(self):
+    #     self.model.train()
+    #     self.dataset.train()
+    #
+        # if self.malicious == True:
+        #     for ep in range(self.local_epoch * 2 ):  # 每个周期分为两轮（奇数和偶数）
+        #         if ep % 2 == 0:
+        #             # 偶数轮次：进行后门攻击训练
+        #             # print(f"Client {self.client_id}: Epoch {ep} - Backdoor Training")
+        #             for x, y in self.trainloader:
+        #                 if len(x) <= 1:
+        #                     continue  # 避免批次大小为1导致的 BatchNorm2d 错误
+        #                 x[:, 0, 24:27, 24:27] = 1.0  # 在 (24,24) 到 (26,26) 范围内设置为1.0
+        #                 y = torch.tensor([0] * len(y)).to(self.device)
+        #
+        #                 x, y = x.to(self.device), y.to(self.device)
+        #
+        #                 self.optimizer.zero_grad()
+        #                 logit = self.model(x)
+        #                 loss = self.criterion(logit, y)
+        #                 loss.backward()
+        #                 self.optimizer.step()
+        #         else:
+        #             # 奇数轮次：正常训练
+        #             # print(f"Client {self.client_id}: Epoch {ep} - Standard Training")
+        #             for x, y in self.trainloader:
+        #                 if len(x) <= 1:
+        #                     continue  # 避免批次大小为1导致的 BatchNorm2d 错误
+        #
+        #                 x, y = x.to(self.device), y.to(self.device)
+        #
+        #                 self.optimizer.zero_grad()
+        #                 logit = self.model(x)
+        #                 loss = self.criterion(logit, y)
+        #                 loss.backward()
+        #                 self.optimizer.step()
+        #
+        #     if self.lr_scheduler is not None:
+        #         self.lr_scheduler.step()
+        # else:
+        #     for _ in range(self.local_epoch):
+        #         for x, y in self.trainloader:
+        #             # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
+        #             if len(x) <= 1:
+        #                 continue
+        #
+        #             x, y = x.to(self.device), y.to(self.device)
+        #             logit = self.model(x)
+        #             loss = self.criterion(logit, y)
+        #             self.optimizer.zero_grad()
+        #             loss.backward()
+        #             self.optimizer.step()
+        #
+        #         if self.lr_scheduler is not None:
+        #             self.lr_scheduler.step()
 
 
     @torch.no_grad()
