@@ -76,21 +76,22 @@ common:
   delete_useless_run: true
 
 perfedfed:
-  #88.36%(20)
+#12.24 93.32% 92.28% 92.92%
   VAE_lr: 0.0001
   VAE_weight_decay: 0.0001
-  VAE_alpha: 3.94
-  VAE_re: 5.18
-  VAE_kl: 2.62
-  VAE_ce: 3.23
-  VAE_x_ce: 5.61
-  consis: 4.14
-  robust_consis: 5.10
+  VAE_alpha: 1.0359334460003455
+  VAE_re: 3.2575558980054793
+  VAE_kl: 0.9051785783379944
+  VAE_ce: 2.4740249293868835
+  VAE_x_ce: 1.3411506119294256
+  consis: 1.3339672099569535
+  robust_consis: 3.452822035499549
   VAE_batch_size: 32
   VAE_block_depth: 64
   warmup_local_round: 2
+  datasets_weights: 0.2
+  display_robust_feature: False
 fedgen:
-  #44.86%(36)
   ensemble_lr: 0.0001
   gen_batch_size: 32
   generative_alpha: 7.25
@@ -107,8 +108,22 @@ fedgen:
   train_generator_epoch: 1
   min_samples_per_label: 1
 fedfomo:
-  #90.91%(25)
     M: 5
     valset_ratio: 0.1
-pfedsim:
-  warmup_round: 0.5
+# 83.76%(50)	86.14%(50)
+#│   'perfedfed': {
+#│   │   'VAE_lr': 0.0001,
+#│   │   'VAE_weight_decay': 0.0001,
+#│   │   'VAE_alpha': 1.0359334460003455,
+#│   │   'VAE_re': 3.2575558980054793,
+#│   │   'VAE_kl': 0.9051785783379944,
+#│   │   'VAE_ce': 2.4740249293868835,
+#│   │   'VAE_x_ce': 1.3411506119294256,
+#│   │   'consis': 1.3339672099569535,
+#│   │   'robust_consis': 3.452822035499549,
+#│   │   'VAE_batch_size': 32,
+#│   │   'VAE_block_depth': 64,
+#│   │   'warmup_local_round': 2,
+#│   │   'datasets_weights': 0.7,
+#│   │   'display_robust_feature': False
+#│   }

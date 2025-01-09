@@ -1,16 +1,18 @@
 #!/bin/bash
 
 # 所有方法列表
-methods=("local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr" "pfedsim" "fedper" "fedrep" "fedAP" "fedbn" "fedfomo" "fedproto" "perfedfed")
-#methods=("local" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr" "pfedsim" "fedper" "fedrep" "fedAP" "fedbn" "fedfomo" "fedproto")
-global_buffer_list=("local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr" "pfedsim" "fedAP" "fedbn" "fedfomo" "fedproto")
+methods=("perfedfed" "local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr"  "fedala" "knnper" "fedper" "fedrep" "fedap" "fedbn" "fedfomo" "fedproto")
+
+#methods=("fedrep" "fedap" "fedbn" "fedfomo" "fedproto")
+
+global_buffer_list=("local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" "ccvr"  "fedala" "knnper" "fedap" "fedbn" "fedfomo" "fedproto")
 local_buffer_list=("fedper" "fedrep" "perfedfed")
 
 # 配置文件路径
-config_path="config/cifar10/a=0.5"
+config_path="config/mnist/a=1.0"
 
 # 输出日志文件
-log_file="output_cifar10a0.5.txt"
+log_file="output_mnist_a1.0.txt"
 
 # 清空日志文件
 > "$log_file"
@@ -29,7 +31,7 @@ for method in "${methods[@]}"; do
     echo "Running method: $method with config: $config_name" | tee -a "$log_file"
 
     # 运行每个方法，日志输出保存到文件
-    if python main.py --config-name "$config_name" --config-path "$config_path" method="$method" >> "$log_file" 2>&1; then
+    if python ../main.py --config-name "$config_name" --config-path "$config_path" method="$method" >> "$log_file" 2>&1; then
         echo "Method $method completed successfully." | tee -a "$log_file"
     else
         echo "Method $method failed." | tee -a "$log_file"

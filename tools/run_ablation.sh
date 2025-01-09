@@ -7,10 +7,10 @@ global_buffer_list=("local" "fedavg" "fedfed" "fedgen" "fedprox" "moon" "fedlc" 
 local_buffer_list=("fedper" "fedrep" "perfedfed")
 
 # 配置文件路径
-config_path="config/mnist/a=0.1"
+config_path="config/mnist/a=1.0"
 
 # 输出日志文件
-log_file="output(mnist)_perfedfed_datasetsweights.txt"
+log_file="output(mnist)_perfedfed_datasetsweights_a1.0.txt"
 
 # 清空日志文件
 > "$log_file"
