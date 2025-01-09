@@ -76,6 +76,7 @@ parallel:
 
 common:
   malicious_ratio: 1.0
+  defense_method: weightDiffClipping # clip,median, krum, Norm Bound
   wandb: false
   seed: 42 # Random seed of the run.
   join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
