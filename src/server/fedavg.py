@@ -18,6 +18,7 @@ import numpy as np
 import ray
 import torch
 from hydra.core.hydra_config import HydraConfig
+from matplotlib.style.core import available
 from omegaconf import DictConfig, OmegaConf
 from rich.console import Console
 from rich.pretty import pprint as rich_pprint
@@ -39,7 +40,7 @@ from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import MODELS, DecoupledModel
 from src.utils.tools import Logger, fix_random_seed, get_optimal_cuda_device
 from src.utils.trainer import FLbenchTrainer
-from src.utils.defender import WeightDiffClippingDefense,AddNoiseDefense,KrumDefense,PerFedFedDefense
+from src.utils.defender import WeightDiffClippingDefense,PerFedFedDefense
 
 class FedAvgServer:
     def __init__(
@@ -146,6 +147,12 @@ class FedAvgServer:
             # 将前 `malicious_client_num` 个客户端的标签设置为 1（恶意客户端）
             for i in range(malicious_client_num):
                 self.clients_malicious_label[i] = 1
+        #------------------------------------------FL detector-----------------------------------------
+        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1 and self.args.common.defense_method=="fldetector":
+            self.grad_list=[]
+            self.old_grad_list=[]
+            self.weight_record=[]
+            self.grad_record=[]
 
         # system heterogeneity (straggler) setting
         if (
@@ -426,8 +433,13 @@ class FedAvgServer:
             self.verbose = (self.current_epoch + 1) % self.args.common.verbose_gap == 0
 
             if self.verbose:
-                self.logger.log("-" * 28, f"TRAINING EPOCH: {E + 1}", "-" * 28)
+                if self.args.common.malicious_ratio>0 and self.current_epoch+1 >= self.args.common.startAttack:
+                    self.logger.log("-" * 24, f"attack TRAINING EPOCH: {E + 1}", "-" * 24)
+                else:
+                    self.logger.log("-" * 28, f"TRAINING EPOCH: {E + 1}", "-" * 28)
             self.selected_clients = self.client_sample_stream[E]
+            if self.args.common.malicious_ratio>0 and self.args.common.everyEatteck:
+                self.selected_clents = self.makeSureAttackHappen()
             begin = time.time()
             self.train_one_round()
             end = time.time()
@@ -442,6 +454,31 @@ class FedAvgServer:
             f"{self.algorithm_name}'s average time taken by each global epoch: "
             f"{int(avg_round_time // 60)} min {(avg_round_time % 60):.2f} sec."
         )
+
+    def makeSureAttackHappen(self):
+        # 获取当前选中的客户端列表
+        tmpSelected_Clients = self.selected_clients
+        needChange = True
+        # 遍历选中的客户端，检查是否有恶意客户端
+        for i in tmpSelected_Clients:
+            if self.clients_malicious_label[i] == 1:  # 当前轮次存在恶意客户端
+                needChange = False
+                break  # 如果找到恶意客户端，可以直接退出循环
+        # 如果没有恶意客户端，则需要替换一个客户端为恶意客户端
+        if needChange:
+            # 创建一个可用的恶意客户端列表
+            available_Malicious_clients = [
+                i for i in range(len(self.clients_malicious_label))
+                if self.clients_malicious_label[i] == 1 and i not in tmpSelected_Clients
+            ]
+            # 确保有可用的恶意客户端，否则避免出现异常
+            if available_Malicious_clients:
+                # 随机从可用恶意客户端中选择一个替换到当前选中列表中
+                malicious_client = random.choice(available_Malicious_clients)
+                tmpSelected_Clients[0] = malicious_client  # 替换第一个客户端为恶意客户端
+        # 返回更新后的客户端列表
+        return tmpSelected_Clients
+
 
     def train_one_round(self):
         """The function of indicating specific things FL method need to do (at
@@ -482,7 +519,8 @@ class FedAvgServer:
             optimizer_state=self.client_optimizer_states[client_id],
             lr_scheduler_state=self.client_lr_scheduler_states[client_id],
             return_diff=self.return_diff,
-            malicious = self.clients_malicious_label[client_id]
+            malicious = self.clients_malicious_label[client_id],
+            current_epoch = self.current_epoch
         )
 
     def test(self):
@@ -961,24 +999,16 @@ class FedAvgServer:
             # 如果未指定防御方法或防御方法未知，直接调用 aggregate 进行普通聚合
             self.logger.log(f"Defense method '{defense_method}' is unknown. Using default aggregation.")
             self.aggregate(client_packages)
-        elif defense_method == "weightDiffClipping":
-            self.defender = WeightDiffClippingDefense(norm_bound=1.5)
+        elif self.args.common.malicious_ratio>0 and defense_method == "weightDiffClipping":
+            self.defender = WeightDiffClippingDefense(norm_bound=0.5) # 0.1，0.3 0.5中选择
             self.defender.exec(client_packages,self.public_model_params)
             self.aggregate(client_packages)
-        elif defense_method == "AddNoise":
-            self.defender = AddNoiseDefense()
-            defense_client_packages = self.defender.exec(client_packages, self.public_model_params)
-            self.defender.aggregate(defense_client_packages)
-        elif defense_method == "Krum":
-            self.defender = KrumDefense()
-            defense_client_packages = self.defender.exec(client_packages, self.public_model_params)
-            self.defender.aggregate(defense_client_packages)
-        # perfedfed的防御方法只能针对perfedfed！
-        elif defense_method == "PerFedFed" and (self.algorithm_name).lower() =="perfedfed":
+        elif self.args.common.malicious_ratio>0 and defense_method == "PerFedFed" and (self.algorithm_name).lower() =="perfedfed" and self.current_epoch+1 > self.args.common.startDefense:
             self.defender = PerFedFedDefense(bound=0.5,clients_malicious_label=self.clients_malicious_label,logger=self.logger,clients_pred_result = self.clients_pred_result)
             defense_client_packages = self.defender.exec(client_packages, self.global_VAE_params)
             self.aggregate(defense_client_packages)
         else:
             self.aggregate(client_packages)
+
 
 

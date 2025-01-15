@@ -26,8 +26,47 @@ class Defense:
     def aggregate(self,client_package):
         pass
 
+    def evaluate_detection(self,clients_pred_result=None,clients_malicious_label=None):
+        """
+        计算 DACC、FPR 和 FNR 指标。
+        """
+        # 将数据转换为 NumPy 数组，确保可以进行向量化计算
+        pred = np.array(clients_pred_result)
+        label = np.array(clients_malicious_label)
+
+        # -------------------------------1. 计算 DACC-------------------------------
+        correct_predictions = (pred == label).sum()
+        total_clients = len(label)
+        DACC = correct_predictions / total_clients if total_clients > 0 else 0.0
+
+        # -------------------------------2. 计算 FPR-------------------------------
+        benign_clients = (label == 0)  # 真实良性客户端
+        false_positives = ((pred == 1) & (label == 0)).sum()  # 被错误标记为恶意的良性客户端
+        total_benign_clients = benign_clients.sum()
+        FPR = false_positives / total_benign_clients if total_benign_clients > 0 else 0.0
+
+        # -------------------------------3. 计算 FNR-------------------------------
+        malicious_clients = (label == 1)  # 真实恶意客户端
+        false_negatives = ((pred == 0) & (label == 1)).sum()  # 被错误标记为良性的恶意客户端
+        total_malicious_clients = malicious_clients.sum()
+        FNR = false_negatives / total_malicious_clients if total_malicious_clients > 0 else 0.0
+
+        # 打印结果
+        self.logger.log("🕵️ 检测结果：")
+        self.logger.log(f"DACC (检测准确率): {DACC:.4f}")
+        self.logger.log(f"FPR (假阳性率): {FPR:.4f}")
+        self.logger.log(f"FNR (假阴性率): {FNR:.4f}")
+
+        return {
+            "DACC": DACC,
+            "FPR": FPR,
+            "FNR": FNR
+        }
+
 
 # only apply for fedavg
+# WeightDiffClippingDefense 的目的是通过裁剪客户端模型参数与全局模型参数的差异
+# 限制每个客户端对全局模型更新的影响，从而增强联邦学习的安全性。这种方法通常用于对抗后门攻击或异常客户端更新。
 class WeightDiffClippingDefense(Defense):
     def __init__(self, norm_bound, *args, **kwargs):
         """
@@ -124,53 +163,12 @@ class PerFedFedDefense(Defense):
         }
         return valid_clients_package
 
-    def evaluate_detection(self,clients_pred_result=None,clients_malicious_label=None):
-        """
-        计算 DACC、FPR 和 FNR 指标。
-        """
-        # 将数据转换为 NumPy 数组，确保可以进行向量化计算
-        pred = np.array(clients_pred_result)
-        label = np.array(clients_malicious_label)
 
-        # -------------------------------1. 计算 DACC-------------------------------
-        correct_predictions = (pred == label).sum()
-        total_clients = len(label)
-        DACC = correct_predictions / total_clients if total_clients > 0 else 0.0
 
-        # -------------------------------2. 计算 FPR-------------------------------
-        benign_clients = (label == 0)  # 真实良性客户端
-        false_positives = ((pred == 1) & (label == 0)).sum()  # 被错误标记为恶意的良性客户端
-        total_benign_clients = benign_clients.sum()
-        FPR = false_positives / total_benign_clients if total_benign_clients > 0 else 0.0
-
-        # -------------------------------3. 计算 FNR-------------------------------
-        malicious_clients = (label == 1)  # 真实恶意客户端
-        false_negatives = ((pred == 0) & (label == 1)).sum()  # 被错误标记为良性的恶意客户端
-        total_malicious_clients = malicious_clients.sum()
-        FNR = false_negatives / total_malicious_clients if total_malicious_clients > 0 else 0.0
-
-        # 打印结果
-        self.logger.log("🕵️ 检测结果：")
-        self.logger.log(f"DACC (检测准确率): {DACC:.4f}")
-        self.logger.log(f"FPR (假阳性率): {FPR:.4f}")
-        self.logger.log(f"FNR (假阴性率): {FNR:.4f}")
-
-        return {
-            "DACC": DACC,
-            "FPR": FPR,
-            "FNR": FNR
-        }
-
-class AddNoiseDefense(Defense):
-    def __init__(self, *args, **kwargs):
+class FLdetectorDefense(Defense):
+    def __init__(self,bound, *args, **kwargs):
         pass
 
-    def exec(self, client_model, global_model, *args, **kwargs):
-        pass
 
-class KrumDefense(Defense):
-    def __init__(self, *args, **kwargs):
-        pass
-    def exec(self, client_model, global_model, *args, **kwargs):
-        pass
+
 

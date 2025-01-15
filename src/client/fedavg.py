@@ -76,6 +76,7 @@ class FedAvgClient:
 
         self.return_diff = return_diff
         self.malicious = False
+        self.server_current_epoch = None
 
 
     def load_data_indices(self):
@@ -168,6 +169,7 @@ class FedAvgClient:
             )
         # ------ malicious---
         self.malicious = True if package["malicious"] == 1 else False
+        self.server_current_epoch = package["current_epoch"]
 
     def train(self, server_package: dict[str, Any]):
         self.set_parameters(server_package)
@@ -245,6 +247,8 @@ class FedAvgClient:
     def fit(self):
         self.model.train()
         self.dataset.train()
+        if self.malicious == True:
+            self.local_epoch=self.args.common.attackerLocalEpoch
         for _ in range(self.local_epoch):
             for x, y in self.trainloader:
                 # 当当前批次大小为1时，BatchNorm2d会报错，跳过该批次
@@ -253,7 +257,7 @@ class FedAvgClient:
 
                 x, y = x.to(self.device), y.to(self.device)
 
-                if self.malicious:
+                if self.malicious and self.server_current_epoch+1 >= self.args.common.startAttack:
                     x, y = self.attack(x, y, self.args.common.attack_method)
 
                 logit = self.model(x)
@@ -481,7 +485,7 @@ class FedAvgClient:
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-
+    @torch.no_grad()
     def asr_test(self,model: torch.nn.Module = None):
         target_model = self.model if model is None else model
         target_model.eval()

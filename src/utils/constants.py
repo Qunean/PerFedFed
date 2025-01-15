@@ -60,8 +60,12 @@ DEFAULTS = {
     },
     "common": {
         "malicious_ratio": 0,
+        "everyEatteck": True,
         "defense_method": None,
         "attack_method": "blackbox_trigger",
+        "attackerLocalEpoch":5,
+        "startAttack": 150,
+        "startDefense": 50,
         "poisoned_batch_size": 5,
         "target_label": 0,
         "wandb": False,

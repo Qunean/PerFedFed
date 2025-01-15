@@ -28,6 +28,8 @@ class PerFedFedClient(FedAvgClient):
     def fit(self):
         self.model.train()
         self.dataset.train()
+        if self.malicious == True:
+            self.local_epoch=self.args.common.attackerLocalEpoch
         for local_e in range(self.local_epoch):
             self.dummy_VAE.eval()
 
@@ -36,7 +38,7 @@ class PerFedFedClient(FedAvgClient):
                 if len(y) <= 1:
                     continue
                 x, y = x.to(self.device), y.to(self.device)
-                if self.malicious:
+                if self.malicious and self.server_current_epoch+1 >= self.args.common.startAttack:
                     x, y = self.attack(x, y, self.args.common.attack_method)
                 batch_size = x.shape[0]
                 robust, mu, logvar = self.VAE(x)
