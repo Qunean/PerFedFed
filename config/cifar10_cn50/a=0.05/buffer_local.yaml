@@ -48,12 +48,12 @@ parallel:
 common:
   wandb: False
   seed: 42 # Random seed of the run.
-  join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
+  join_ratio: 0.2 # Ratio for (client each round) / (client num in total).
   global_epoch: 50 # Number of global epochs, also called communication round.
   local_epoch: 5 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.
-  test_interval: 1 # Interval round of performing test on all test clients.
+  test_interval: 10 # Interval round of performing test on all test clients.
   straggler_ratio: 0
   straggler_min_local_epoch: 0
 
@@ -76,16 +76,17 @@ common:
   delete_useless_run: true
 
 perfedfed:
-  VAE_lr: 0.0001
-  VAE_weight_decay: 0.00001
-  VAE_alpha: 1.6937094564293966
-  VAE_re: 3.722822923728685
-  VAE_kl: 0.27698158308348225
-  VAE_ce: 3.779249696831126
-  VAE_x_ce: 1.4992846545990584
-  consis: 1.9908747195450256
-  robust_consis: 2.825196329484959
-  VAE_batch_size: 64
-  VAE_block_depth: 32
-  warmup_local_round: 3
-  datasets_weights: 0.8
+  VAE_lr: 0.0002
+  VAE_weight_decay: 0.0001
+  VAE_alpha: 0.6659945440062137
+  VAE_re: 0.13569663137112442
+  VAE_kl: 0.12814732777673934
+  VAE_ce: 4.974478506619116
+  VAE_x_ce: 1.80055240499942
+  consis: 2.4172572993668155
+  robust_consis: 0.5823992125298033
+  VAE_batch_size: 32
+  VAE_block_depth: 64
+  warmup_local_round: 2
+  datasets_weights: 0.6
+  display_robust_feature: False

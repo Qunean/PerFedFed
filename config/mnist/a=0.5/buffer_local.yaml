@@ -139,3 +139,18 @@ fedgen:
   ensemble_epoch: 50
   train_generator_epoch: 1
   min_samples_per_label: 1
+perfedfed:
+    datasets_weights: 0.0
+    VAE_lr: 0.001
+    VAE_weight_decay: 1e-06
+    VAE_alpha: 2.0
+    VAE_batch_size: 64
+    VAE_block_depth: 32
+    warmup_local_round: 2
+    VAE_re: 5.0
+    VAE_kl: 0.005
+    consis: 2.0
+    robust_consis: 2.0
+    VAE_ce: 2.0
+    VAE_x_ce: 5.0
+    display_robust_feature: False

@@ -76,7 +76,7 @@ parallel:
 
 common:
   seed: 42 # Random seed of the run.
-  join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
+  join_ratio: 0.2 # Ratio for (client each round) / (client num in total).
   global_epoch: 50 # Number of global epochs, also called communication round.
   local_epoch: 5 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
@@ -140,17 +140,17 @@ fedgen:
   train_generator_epoch: 1
   min_samples_per_label: 1
 perfedfed:
-    datasets_weights: 1.0
-    VAE_lr: 0.001
-    VAE_weight_decay: 1e-06
-    VAE_alpha: 2.0
-    VAE_batch_size: 64
-    VAE_block_depth: 32
-    warmup_local_round: 2
-    VAE_re: 5.0
-    VAE_kl: 0.005
-    consis: 2.0
-    robust_consis: 2.0
-    VAE_ce: 2.0
-    VAE_x_ce: 5.0
-    display_robust_feature: False
+  VAE_lr: 0.0003,
+  VAE_weight_decay: 1e-05,
+  VAE_alpha: 3.344894245125623,
+  VAE_batch_size: 64,
+  VAE_block_depth: 32,
+  warmup_local_round: 2
+  VAE_re: 4.497875310289961
+  VAE_kl: 0.8120729741885399
+  consis: 0.03407464700337093
+  robust_consis: 4.249339955744115
+  VAE_ce: 0.38681972201343007
+  VAE_x_ce: 2.5695958192691633
+  datasets_weights: 0.8
+  display_robust_feature: False
