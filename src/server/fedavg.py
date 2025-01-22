@@ -40,7 +40,7 @@ from src.utils.metrics import Metrics,ASRMetrics
 from src.utils.models import MODELS, DecoupledModel
 from src.utils.tools import Logger, fix_random_seed, get_optimal_cuda_device
 from src.utils.trainer import FLbenchTrainer
-from src.utils.defender import WeightDiffClippingDefense,PerFedFedDefense
+from src.utils.defender import WeightDiffClippingDefense,PerFedFedDefense,FLdetectorDefense
 
 class FedAvgServer:
     def __init__(
@@ -139,20 +139,6 @@ class FedAvgServer:
         self.client_local_epoches: list[int] = [
             self.args.common.local_epoch
         ] * self.client_num
-        #--------------------------------------------malicious-----------------------------------------
-        self.clients_malicious_label = [0] * self.client_num
-        self.clients_pred_result=[0] * self.client_num
-        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1:
-            malicious_client_num = int(self.client_num * self.args.common.malicious_ratio)
-            # 将前 `malicious_client_num` 个客户端的标签设置为 1（恶意客户端）
-            for i in range(malicious_client_num):
-                self.clients_malicious_label[i] = 1
-        #------------------------------------------FL detector-----------------------------------------
-        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1 and self.args.common.defense_method=="fldetector":
-            self.grad_list=[]
-            self.old_grad_list=[]
-            self.weight_record=[]
-            self.grad_record=[]
 
         # system heterogeneity (straggler) setting
         if (
@@ -235,6 +221,33 @@ class FedAvgServer:
         self.trainer: FLbenchTrainer = None
         if use_fedavg_client_cls:
             self.init_trainer()
+
+        # --------------------------------------------malicious-----------------------------------------
+        self.clients_malicious_label = [0] * self.client_num
+        self.clients_pred_result = [0] * self.client_num
+        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1:
+            malicious_client_num = int(self.client_num * self.args.common.malicious_ratio)
+            # 将前 `malicious_client_num` 个客户端的标签设置为 1（恶意客户端）
+            for i in range(malicious_client_num):
+                self.clients_malicious_label[i] = 1
+        # ------------------------------------------FL detector-----------------------------------------
+        if self.args.common.malicious_ratio > 0 and self.args.common.malicious_ratio <= 1 and self.args.common.defense_method == "fldetector":
+            # 初始化 FL detector 相关变量
+            self.defender = FLdetectorDefense(
+                old_update_list={client_id: None for client_id in range(self.client_num)},  # 用字典初始化
+                weight_record=[],  # 按窗口大小初始化记录列表
+                update_record=[],  # 按窗口大小初始化记录列表
+                malicious_score=[],
+                clients_malicious_label=self.clients_malicious_label,  # 客户端恶意标签
+                clients_pred_result=self.clients_pred_result,
+                window_size=self.args.common.fldetector_window,
+                logger=self.logger,  # 日志对象
+                device=self.device,  # 设备
+                startDefense=self.args.common.startDefense,
+                usePreviousScore=self.args.common.usePreviousScore,
+                # 生成一个排好序的客户端 ID 列表
+                client_ids = sorted(range(self.client_num)),
+            )
 
     def init_trainer(self, fl_client_cls=FedAvgClient, **extras):
         """Initiate the FL-bench trainier that responsible to client training.
@@ -485,10 +498,7 @@ class FedAvgServer:
         server side) in each communication round."""
 
         client_packages = self.trainer.train()
-        #加上异常检测的流程
         self.defense(client_packages, self.args.common.defense_method)
-        # defender中加上aggregate的逻辑。根据defense_method 来选择defender
-        # self.aggregate(client_packages)
 
     def package(self, client_id: int):
         """Package parameters that the client-side training needs. If you are
@@ -990,11 +1000,10 @@ class FedAvgServer:
                     )
 
 
-
     def defense(self, client_packages, defense_method):
         # 目前只实现fedavg以及perfedfed的defense方法
         support_algorithm_names = ["fedavg","perfedfed"]
-        support_defense_names = ["weightDiffClipping", "AddNoise", "Krum", "PerFedFed"]
+        support_defense_names = ["weightDiffClipping", "perfedfed","fldetector"]
         if defense_method is None or defense_method not in support_defense_names and self.algorithm_name not in support_algorithm_names:
             # 如果未指定防御方法或防御方法未知，直接调用 aggregate 进行普通聚合
             self.logger.log(f"Defense method '{defense_method}' is unknown. Using default aggregation.")
@@ -1003,10 +1012,14 @@ class FedAvgServer:
             self.defender = WeightDiffClippingDefense(norm_bound=0.5) # 0.1，0.3 0.5中选择
             self.defender.exec(client_packages,self.public_model_params)
             self.aggregate(client_packages)
-        elif self.args.common.malicious_ratio>0 and defense_method == "PerFedFed" and (self.algorithm_name).lower() =="perfedfed" and self.current_epoch+1 > self.args.common.startDefense:
+        elif self.args.common.malicious_ratio>0 and defense_method == "perfedfed" and (self.algorithm_name).lower() =="perfedfed" and self.current_epoch+1 >= self.args.common.startDefense:
             self.defender = PerFedFedDefense(bound=0.5,clients_malicious_label=self.clients_malicious_label,logger=self.logger,clients_pred_result = self.clients_pred_result)
             defense_client_packages = self.defender.exec(client_packages, self.global_VAE_params)
             self.aggregate(defense_client_packages)
+        elif self.args.common.malicious_ratio>0 and defense_method == "fldetector" and (self.algorithm_name).lower() =="fedavg" and self.current_epoch+1 >= self.args.common.startDefense:
+            defense_client_packages = self.defender.exec(client_packages,self.public_model_params,self.current_epoch)
+            self.aggregate(defense_client_packages)
+            self.defender.update_old_update_list(self.public_model_params) # self.public_model_params
         else:
             self.aggregate(client_packages)
 

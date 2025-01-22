@@ -47,13 +47,14 @@ parallel:
 
 common:
   malicious_ratio: 0.28
-  defense_method: None # clip,median, krum, Norm Bound
-  attackerLocalEpoch: 10
+  defense_method: none # none,perfedfed,weightDiffClipping
+  attackerLocalEpoch: 2 # 2 is same as normal client; 10 is larger
   startAttack: 20
+  startDefense: 20
   wandb: False
   seed: 42 # Random seed of the run.
-  join_ratio: 0.1 # Ratio for (client each round) / (client num in total).
-  global_epoch: 250 # Number of global epochs, also called communication round.
+  join_ratio: 1 # Ratio for (client each round) / (client num in total).
+  global_epoch: 50 # Number of global epochs, also called communication round.
   local_epoch: 2 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.

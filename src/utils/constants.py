@@ -64,6 +64,8 @@ DEFAULTS = {
         "defense_method": None,
         "attack_method": "blackbox_trigger",
         "attackerLocalEpoch":5,
+        "fldetector_window": 10,
+        "usePreviousScore": False,
         "startAttack": 150,
         "startDefense": 50,
         "poisoned_batch_size": 5,

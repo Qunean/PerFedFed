@@ -40,12 +40,15 @@ parallel:
   num_workers: 2
 common:
   malicious_ratio: 0.28
-  defense_method: None # clip,median, krum, Norm Bound
-  attackerLocalEpoch: 10
+  defense_method: none # fldetector weightDiffClipping
+  attackerLocalEpoch: 5
   startAttack: 20
-  seed: 42 # Random seed of the run.
-  join_ratio: 0.5 # Ratio for (client each round) / (client num in total).
-  global_epoch: 500 # Number of global epochs, also called communication round.
+  startDefense: 10
+  fldetector_window: 10 # default setting in essay is 5
+  usePreviousScore: True
+  seed: 42 # Random seed of  the run.
+  join_ratio: 0.2 # Ratio for (client each round) / (client num in total).
+  global_epoch: 50 # Number of global epochs, also called communication round.
   local_epoch: 2 # Number if epochs of client local training.
   finetune_epoch: 2 # Number of epochs of clients fine-tunning their models before test.
   batch_size: 32 # Data batch size for client local training.
@@ -56,7 +59,7 @@ common:
   eval_test: true
   eval_val: true
   eval_train: true
-  verbose_gap: 10 # Interval round of displaying clients training performance on terminal.
+  verbose_gap: 1 # Interval round of displaying clients training performance on terminal.
   monitor: null # [null, visdom, tensorboard]
   use_cuda: true # Whether to use cuda for training.
   save_log: true # Whether to save log files in out/<method>/<start_time>.

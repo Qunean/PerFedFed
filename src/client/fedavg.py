@@ -219,8 +219,6 @@ class FedAvgClient:
                 )
             }
             client_package.pop("regular_model_params")
-        # if self.args.common.malicious_ratio>0:
-            # client_package["malicious_res"] = self.malicious_res
         return client_package
 
     # def fit(self):
@@ -262,12 +260,27 @@ class FedAvgClient:
 
                 logit = self.model(x)
                 loss = self.criterion(logit, y)
+
+                # 打印 loss.backward() 前的梯度
+                # print("Before backward:")
+                # for name, param in self.model.named_parameters():
+                #     if param.grad is not None:
+                #         print(f"{name}.grad before backward: {param.grad}")
+
                 self.optimizer.zero_grad()
                 loss.backward()
+
+                # 打印 loss.backward() 后的梯度
+                # print("After backward:")
+                # for name, param in self.model.named_parameters():
+                #     if param.grad is not None:
+                #         print(f"{name}.grad after backward: {param.grad}")
+
                 self.optimizer.step()
 
             if self.lr_scheduler is not None:
                 self.lr_scheduler.step()
+
 
     def attack(self, inputs, labels, attack_method):
         if attack_method == "blackbox_trigger":

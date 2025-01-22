@@ -87,6 +87,15 @@ def vectorize(
     elif isinstance(src, Iterator):
         return torch.cat([func(param).flatten() for param in src])
 
+def parameters_dict_to_vector_flt(net_dict) -> torch.Tensor:
+    vec = []
+    for key, param in net_dict.items():
+        # print(key, torch.max(param))
+        if key.split('.')[-1] == 'num_batches_tracked' or key.split('.')[-1] == 'running_mean' or key.split('.')[-1] == 'running_var':
+            continue
+        vec.append(param.view(-1))
+    return torch.cat(vec)
+
 
 @torch.no_grad()
 def evalutate_model(
@@ -183,7 +192,7 @@ def evaluate_asr_model(
 
     # 更新 ASRMetrics
     asrmetrics.update(correct=correct, total=total)
-
+    # print("asr:",correct/total)
     return asrmetrics
 
 
